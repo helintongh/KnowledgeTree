@@ -1,8 +1,6 @@
-### Linux基础知识
+### Linux系统目录结构
 
-#### Linux目录结构
-
-![Linux目录结构图](../resource/file_structure.png)
+![Linux系统路径结构图](../resource/file_structure.png)
 
 1. 根目录: /
 
@@ -43,3 +41,4 @@
 
 - **/tmp** ： **存放临时目录**,会自动清理
 
+- /proc  : 是一个虚拟的路径,它是系统内存的映射,可以通过直接访问这个目录来获取系统信息。
