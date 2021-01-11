@@ -54,7 +54,7 @@ int main(int argc, int *argv[])
     }
 
     // 初始化组播ip和端口号
-    memset(&group_addr, 9, sizeof(struct sockaddr_in));
+    memset(&group_addr, 0, sizeof(struct sockaddr_in));
 
     group_addr.sin_family = AF_INET;
     group_addr.sin_port = htons(group_port);
@@ -75,8 +75,6 @@ int main(int argc, int *argv[])
         data_len = recvfrom(group_socket, data_buffer, BUF_LEN, 0, (struct sockaddr*)&peer_addr, &addr_len);
 
         printf("group recv len:%d  data:%s\n", data_len, data_buffer);
-
-        printf("-----------%s", peer_addr);
 
         sleep(2);
 

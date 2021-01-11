@@ -60,8 +60,8 @@ int main(int argc, char *argv[])
     group_addr.sin_addr.s_addr = inet_addr(group_ip);
 
     int addr_len = sizeof(struct sockaddr_in);
-
-    ret = bind(group_socket, (struct sockaddr_in*)&group_addr, addr_len);
+    
+    ret = bind(group_socket, (struct sockaddr*)&group_addr, addr_len);
     if(ret < 0)
     {
         printf("bind error \n");
@@ -70,7 +70,7 @@ int main(int argc, char *argv[])
 
     // 将该网络接口加入多播组
     struct ip_mreq mreq;
-    memset(&mreq, 0, sizeof(struct ip_mreq));
+    memset((unsigned char *)&mreq,0, sizeof(struct ip_mreq));
 
     mreq.imr_multiaddr.s_addr = inet_addr(group_ip);/*多播地址*/
     mreq.imr_interface.s_addr = INADDR_ANY; /*将本机任意网络接口*/
@@ -90,13 +90,13 @@ int main(int argc, char *argv[])
     {
         memset(data_buffer, 0, BUF_LEN);
         // 从组播客户端peer_addr接收数据
-        data_len = recvfrom(group_socket, data_buffer, BUF_LEN, 0, (struct sockaddr_in*)&peer_addr, &addr_len);
+        data_len = recvfrom(group_socket, data_buffer, BUF_LEN, 0, (struct sockaddr*)&peer_addr, &addr_len);
 
         printf("len:%d data:%s\n", data_len, data_buffer);
 
         strcpy(data_buffer, "group recv message");
         // 发送数据到peer_addr
-        data_len = sendto(group_socket, data_buffer, strlen(data_buffer), 0,(struct sockaddr_in*)&peer_addr, addr_len);
+        data_len = sendto(group_socket, data_buffer, strlen(data_buffer), 0,(struct sockaddr*)&peer_addr, addr_len);
         printf("send len:%d\n",data_len);
     }
 
