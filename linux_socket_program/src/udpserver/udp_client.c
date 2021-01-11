@@ -59,7 +59,7 @@ int main(int argc, int *argv[])
         memset(data_buffer, 0, BUF_LEN);
         strcpy(data_buffer, "I am udp client");
         addr_len = sizeof(struct sockaddr_in);
-        data_len = sendto(client_socket, data_buffer, strlen(data_buffer), 0, (struct sockaddr_in *)&server_address, addr_len);
+        data_len = sendto(client_socket, data_buffer, strlen(data_buffer), 0, (struct sockaddr*)&server_address, addr_len);
 
         printf("send len:%d\n", data_len);
         sleep(2);
