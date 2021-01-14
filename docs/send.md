@@ -19,10 +19,10 @@ flags参数由以上标志按**逻辑或**操作形成。
 [1]:带外数据.md
 
 ##相关函数
-|[recv][1]|[write][2]|[read][3]
+|[recv][2]|[write][3]|[read][4]
 |---------|-------|---------
 
 *****
-[1]:recv.md
-[2]:write.md
-[3]:read.md
+[2]:recv.md
+[3]:write.md
+[4]:read.md

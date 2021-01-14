@@ -5,7 +5,10 @@
 ssize_t recv(int sockfd, void *buf, size_t len, int flags);
 ```
 ## 参数
-前三个参数和[[read|read]]相同。最后一个参数是标志。  
+前三个参数和[read][4]相同。最后一个参数是标志。  
+
+*****
+[4]:read.md
 
 |flags|描述
 |------|-----
