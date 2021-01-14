@@ -19,5 +19,8 @@ ssize_t read(int fd, void *buf, size_t count);
 * 当出错时（即返回-1），如果errno的值是**EINTR**，表示遇到调用信号而中断了读取，那么我们可以再次尝试read。
 
 ## 相关函数
-|[[write|write]]|[[fread|fwrite-fread#fread]]|
+|[write][1] | fread |
 |----------|------------|
+
+*****
+[1]:write.md
