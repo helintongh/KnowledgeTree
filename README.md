@@ -11,7 +11,7 @@
 
 下面是我总结的api的路径:
 
-* Linux使用基础:
+* [Linux使用基础]():
 	* [Linux目录结构](linux_basic/01Linux目录结构.md)
 	* [Linux文件](linux_basic/02Linux文件.md)
 	* [Linux用户权限管理](linux_basic/03Linux用户权限管理.md)
@@ -21,3 +21,17 @@
 
 * Linux基础编程:
 	* [文件IO](docs/文件IO.md)
+		* [POSIX]()
+			* [open](docs/open.md)
+			* [read](docs/read.md)
+			* [write](docs/write.md)
+			* [lseek](docs/lseek.md)
+			* [fcntl](docs/fcntl.md)   可用来修改文件描述符为非阻塞
+	* [文件操作](docs/文件操作.md)
+		* [chown](docs/chown.md)
+		* [rename](docs/rename.md)
+		* [stat](docs/stat.md)
+		* [dirname](docs/basename.md)
+		* [basename](docs/basename.md)
+		* [目录操作](docs/目录操作.md)
+		* [getcwd](docs/getcwd.md)
