@@ -9,11 +9,11 @@ off_t lseek(int fd, off_t offset, int whence);
 - fd是文件描述符
 - offset是偏移量
 - whence是偏移量的基准位置。它的取值有三个
-  - *SEEK_SET*: 开始位置
-  - *SEEK_CUR*: 当前位置
-  - *SEEK_END*: 末尾位置
+  - *SEEK_SET* : 开始位置
+  - *SEEK_CUR* : 当前位置
+  - *SEEK_END* : 末尾位置
 
->为什么开始位置的后缀是**_SET**
+>为什么开始位置的后缀是 **_SET**
 >>实际上，在man手册中可以看出。这三个宏的描述是
 - SEEK_SET The offset is set to offset bytes.
 - SEEK_CUR The offset is set to its current location plus offset bytes.
