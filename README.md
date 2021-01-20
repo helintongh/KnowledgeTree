@@ -38,7 +38,7 @@
 	|  [exec~](docs/exec.md) | [system](docs/system.md) |   <kbd>fork进程执行命令</kbd>>
 	| [wait](docs/wait.md) | [waitpid](docs/waitpid.md) |	<kbd>进程回收</kbd>>
 
-* [IPC进程间通信](README.md)
+* [IPC进程间通信](进程通信.md)
 	* 1. 管道
 
 	| [pipe](docs/pipe.md) |  [mkfifo](docs/mkfifo.md) |
