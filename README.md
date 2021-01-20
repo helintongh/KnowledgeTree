@@ -18,7 +18,7 @@
 	* [Linux动态库静态库怎么生成的](06Linux源代码变成库.md)
 
 * [Linux基础编程](README.md):
-	* [文件IO](docs/文件IO.md)
+	* [1.文件IO](docs/文件IO.md)
 		* [POSIX](README.md)
 			* [open](docs/open.md)
 			* [read](docs/read.md)
@@ -26,7 +26,7 @@
 			* [lseek](docs/lseek.md)
 			* [fcntl](docs/fcntl.md)   可用来修改文件描述符为非阻塞
 			* [dup](docs/dup.md)
-	* [文件操作](docs/文件操作.md)
+	* [2.文件操作](docs/文件操作.md)
 		* [chown](docs/chown.md)
 		* [rename](docs/rename.md)
 		* [stat](docs/stat.md)
@@ -45,3 +45,12 @@
 	  * [sockatmark](README.md)
 	* [文章总结1]()
 	* [文章总结2]()
+
+* [Linux并发编程]
+
+	* 1. [进程控制](docs/进程控制.md)
+
+	| [fork](docs/fork.md) |  [vfork](docs/vfork.md) |
+	| ------ | ------ |
+	|  [exec~](docs/exec.md) | [system](docs/system.md) |
+	| [wait](docs/wait.md) | [waitpid](docs/waitpid.md) |
