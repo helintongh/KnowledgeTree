@@ -6,16 +6,10 @@
 
 通过Cache来缩小知识范围，但是即使是被压缩过的知识依旧很多，我们怎么能够在脑海中快速检索它们呢？结合查找算法，Hash无疑是最快的，但又有多少人能够给一个"key"立马对应上"value"呢？所以，最适合人类认知的方式是通过索引 + 树状结构，在整理这份笔记时，我划分了很多级索引用来将各部分知识点划分到相应的模块中，不仅检索速度上去了还可以对整个知识体系有宏观认识。
 
+[Linux编程使用基础](linux_basic/README.md) 
+
 
 下面是我总结的api的路径:
-
-* [Linux使用基础](README.md):
-	* [Linux目录结构](linux_basic/01Linux目录结构.md)
-	* [Linux文件](linux_basic/02Linux文件.md)
-	* [Linux用户权限管理](linux_basic/03Linux用户权限管理.md)
-	* [Linux文件查找和检索](linux_basic/04Linux文件查找和检索.md)
-	* [Linux压缩包管理](linux_basic/05Linux压缩包管理.md)
-	* [Linux动态库静态库怎么生成的](06Linux源代码变成库.md)
 
 * [Linux基础编程](README.md):
 	* [1.文件IO](docs/文件IO.md)
@@ -35,7 +29,7 @@
 		* [目录操作](docs/目录操作.md)
 		* [getcwd](docs/getcwd.md)
 
-* [Linux并发编程之进程相关]
+* [Linux并发编程之进程相关](README.md)
 
 	* 1. [进程控制](docs/进程控制.md)
 
@@ -43,10 +37,13 @@
 	| ------ | ------ |
 	|  [exec~](docs/exec.md) | [system](docs/system.md) |   <kbd>fork进程执行命令</kbd>>
 	| [wait](docs/wait.md) | [waitpid](docs/waitpid.md) |	<kbd>进程回收</kbd>>
+
 * [IPC进程间通信](README.md)
 	* 1. 管道
+
 	| [pipe](docs/pipe.md) |  [mkfifo](docs/mkfifo.md) |
 	| ------ | ------ |
+
 
 	* 2. [信号处理](docs/信号处理.md)
 		* [所有信号类型](docs/信号类型.md)
@@ -59,6 +56,7 @@
 		* [sigsuspend](docs/sigsuspend.md)
 		* [sigaltstack](docs/sigaltstack.md)
 	* 3.1 [IPC对象](docs/IPC.md) <kbd>System V</kbd>
+
 	|[消息队列](docs/消息队列.md)|[信号量](docs/信号量.md)|[共享内存](docs/共享内存.md)|
 	| ------------------- | ----------------- | ------------------- |
 	|[msgget](docs/msgget.md)|[semget](docs/semget.md)|[shmget](docs/shmget.md)|
