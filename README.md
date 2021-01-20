@@ -46,7 +46,7 @@
 	* [文章总结1]()
 	* [文章总结2]()
 
-* [Linux并发编程]
+* [Linux并发编程之进程相关]()
 
 	* 1. [进程控制](docs/进程控制.md)
 
@@ -54,3 +54,7 @@
 	| ------ | ------ |
 	|  [exec~](docs/exec.md) | [system](docs/system.md) |
 	| [wait](docs/wait.md) | [waitpid](docs/waitpid.md) |
+* [IPC进程间通信]()
+	* 1. 管道
+	| [pipe](docs/pipe.md) |  [mkfifo](docs/mkfifo.md) |
+	| ------ | ------ |
