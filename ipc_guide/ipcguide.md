@@ -353,3 +353,443 @@ Done in by SIGUSR1!
 2. ANSI-C定义了一个名为signal()的函数，可以用来捕获信号。它不像sigaction()那样可靠，功能也不全，所以通常不鼓励使用signal()
 
 所有信号放在了这份文档里: [所有信号类型](信号类型.md)
+
+### 4.pipe
+
+pipe是非常简单的进程间通信方式。举个例子pipe()和fork()组成了"ls | more"中的"|"背后的功能，它们在各种Unix上都实现了。因为它太简单了,所以不会花太多的时间去概述。
+
+#### 4.1一个简单的pipe用例
+
+要明白管道,首先要了解文件描述符。你知道stdio.h里的`FILE *`吧。还有与之配套的函数`fopen(),fclose(),fwrite()` 等等函数。这些实际上是使用文件描述符实现的高级函数，文件描述符使用系统调用，如open()、creat()、close()和write()。文件描述符是简单的整数，类似于stdio.h中的`FILE *` 。
+
+例如，stdin是文件描述符"0"，stdout是"1"，stderr是"2"。同样地，使用fopen()打开的任何文件都会得到它们自己的文件描述符，尽管这个细节对你是隐藏的。
+
+pipe示意图如下:
+
+![pipe图](resource/pipe.png)
+
+基本上，调用pipe()函数会返回一对文件描述符。其中一个描述符连接到管道的写端，另一个连接到读端。任何内容都可以写入管道，并从管道的另一端按照输入的顺序读取。在许多系统中，当向管道写入约10K而没有读取任何内容时，管道就会被填满。
+
+如图可知,fd[1]为写端文件描述符,fd[0]为读端文件描述符,下面看代码。
+
+```c
+#include <stdio.h>
+#include <stdlib.h>
+#include <errno.h>
+#include <unistd.h>
+
+int main(void)
+{
+    int pfds[2];
+    char buf[30];
+
+    if (pipe(pfds) == -1) {
+        perror("pipe");
+        exit(1);
+    }
+
+    printf("writing to file descriptor #%d\n", pfds[1]);
+    write(pfds[1], "test", 5);
+    printf("reading from file descriptor #%d\n", pfds[0]);
+    read(pfds[0], buf, 5);
+    printf("read \"%s\"\n", buf);
+
+    return 0;
+}
+```
+
+pipe()接受一个包含两个整数的数组作为参数。假设没有错误，它将连接两个文件描述符并将它们返回到数组中。数组的第一个元素是管道的读取端，第二个元素是写入端。
+
+上述代码的输出为
+```
+writing to file descriptor #4
+reading from file descriptor #3
+read "test"
+```
+从文件描述符为4和3,可知0，1，2是系统的stdin,stdout,stderr。
+
+#### 4.2fork和pipe的结合
+
+放入一个fork()，看看会发生什么。假设你是一名传递秘密的特工，你需要负责让子进程向父进程发送单词“test”。
+
+1. 让父进程创建一个管道。
+
+2. 然后fork()子进程。
+
+3. fork()函数表明，子进程将收到父进程所有文件描述符的副本，其中包括管道的文件描述符副本。因此，子进程将能够将数据发送到管道的写端，而父进程将从读端获取数据。如下:
+
+```c
+#include <stdio.h>
+#include <stdlib.h>
+#include <errno.h>
+#include <sys/types.h>
+#include <unistd.h>
+
+int main(void)
+{
+    int pfds[2];
+    char buf[30];
+
+    pipe(pfds);
+
+    if (!fork()) 
+    {
+        printf(" CHILD: writing to the pipe\n");
+        write(pfds[1], "test", 5); // pipe的fd[1]是写端
+        printf(" CHILD: exiting\n");
+        exit(0);
+    } 
+    else 
+    {
+        printf("PARENT: reading from pipe\n");
+        read(pfds[0], buf, 5); // pipe的fd[0]是读端
+        printf("PARENT: read \"%s\"\n", buf);
+        wait(NULL);
+    }
+
+    return 0;
+}
+```
+fork()一个新进程，并让它写入管道，而父进程从它读取。结果输出如下:
+
+```
+PARENT: reading from pipe
+ CHILD: writing to the pipe
+ CHILD: exiting
+PARENT: read "test"
+```
+
+在本例中，父进程试图在子进程写入管道之前从管道中读取数据。当这种情况发生时，父进程将被阻塞或休眠，直到数据到达需要读取的位置。可以理解为父进程试图读取数据，然后进入睡眠状态，孩子写入并退出，而父醒来读取数据。
+
+pipe的用途不是太多，因为你看到它有不少限制。
+
+#### 4.3pipe实战
+
+挑战:在C语言中实现`ls | wc -l`
+
+实现这个命令还需要两个函数`exec()`和`dup()`。`exec()`函数族用传递给`exec()`的进程替换当前正在运行的进程。这是将用来运行ls和wc -l的函数。`dup()`获取一个打开的文件描述符，并对其进行克隆(复制)。这就是我们将ls的标准输出连接到wc的标准输入的方式。看，ls的stdout流进管道，wc的stdin从管道流进。管道正好在中间!
+
+```c
+#include <stdio.h>
+#include <stdlib.h>
+#include <unistd.h>
+
+int main(void)
+{
+    int pfds[2];
+
+    pipe(pfds);
+
+    if (!fork()) 
+    {
+        close(1);       /* 关闭stdout文件描述符 */
+        dup(pfds[1]);   /* 使stdout与pfds[1]文件描述符相同 */
+        close(pfds[0]); /* 子进程不需要pipe读端 */
+        execlp("ls", "ls", NULL);
+    } 
+    else 
+    {
+        close(0);       /* 关闭stdin文件描述符 */
+        dup(pfds[0]);   /* 使stdin与pfds[0]文件描述符相同 */
+        close(pfds[1]); /* 父进程不需要pipe写端 */
+        execlp("wc", "wc", "-l", NULL);
+    }
+
+    return 0;
+}
+```
+
+我将对`close()`/`dup()`组合做另一个注释，因为它很奇怪。
+
+- `close(1)`：释放文件描述符1(标准输出)。
+
+- `dup(pfds[1])`在第一个可用的文件描述符“1”中复制管道的写端，因为我们刚刚关闭了它。这样，ls写到标准输出stdin(文件描述符1)的任何内容都将转到`pfds[1]` (管道的写端)。代码的wc部分以相同的方式工作，只是相反。
+
+#### 4.4pipe总结
+
+管道的用法是有局限性的:
+
+1. 它只适用于有血缘关系的进程
+
+2. 数据只能读一次,不能重复读取
+
+3. 半双工方式,同一时刻只能一方数据传输是单向的
+
+
+### 5.FIFO
+
+FIFO是有名管道。也就是说，它就像一根pipe，只不过它有名字!在本例中，管道名是一个文件的名称，多个进程可以`open()`并对其进行读写操作。
+
+#### 5.1创造一个新的FIFO
+
+由于FIFO实际上是磁盘上的一个文件，必须做一些花哨的事情来创建它。这并不难。只需使用适当的参数调用mknod()。下面是一个创建FIFO的mknod()调用:
+
+`mknod("myfifo", S_IFIFO | 0644 , 0);`
+
+在上面的例子中，FIFO文件将被称为“myfifo”。
+
+第二个参数是创建模式，它用于告诉mknod()创建一个FIFO(s_iffifo)并设置该文件的访问权限(octal 644，或rw-r——r——)，也可以通过将sys/stat.h中的宏集合在一起来设置。这个权限与使用chmod命令设置的权限类似。
+
+最后，传递一个设备号。在创建FIFO时，这将被忽略，因此可以在其中放入任何想要的内容。
+
+(顺便说一句:也可以使用Linux mknod命令从命令行创建FIFO。)
+
+#### 5.2生产者和消费者
+
+一旦创建了FIFO，进程就可以启动并使用标准的`open()`系统调用打开它进行读写。
+
+在这里展示两个程序，它们将通过FIFO发送数据。一个是通过FIFO发送数据的speak.c，另一个被称为tick.c，因为它从FIFO中吸取数据。
+
+speak.c
+```c
+#include <stdio.h>
+#include <stdlib.h>
+#include <errno.h>
+#include <string.h>
+#include <fcntl.h>
+#include <sys/types.h>
+#include <sys/stat.h>
+#include <unistd.h>
+
+#define FIFO_NAME "chinese_mainland"
+
+int main(void)
+{
+    char s[300];
+    int num, fd;
+
+    mknod(FIFO_NAME, S_IFIFO | 0666, 0); // 创建FIFO
+
+    printf("waiting for readers...\n");
+    fd = open(FIFO_NAME, O_WRONLY); // 打开FIFO
+    printf("got a reader--type some stuff\n");
+
+    while (gets(s), !feof(stdin)) {
+        if ((num = write(fd, s, strlen(s))) == -1) // 往FIFO里写入用户输入的字符串
+            perror("write");
+        else
+            printf("speak: wrote %d bytes\n", num);
+    }
+
+    return 0;
+}
+```
+speak所做的是创建FIFO，然后尝试打开它。现在，`open()`调用将阻塞，直到其他进程打开管道的另一端进行读取。(有一种方法可以解决这个问题——参见下面的`O_NDELAY`选项)
+
+下面是tick.c:
+
+```c
+#include <stdio.h>
+#include <stdlib.h>
+#include <errno.h>
+#include <string.h>
+#include <fcntl.h>
+#include <sys/types.h>
+#include <sys/stat.h>
+#include <unistd.h>
+
+#define FIFO_NAME "chinese_mainland"
+
+int main(void)
+{
+    char s[300];
+    int num, fd;
+
+    mknod(FIFO_NAME, S_IFIFO | 0666, 0);
+
+    printf("waiting for writers...\n");
+    fd = open(FIFO_NAME, O_RDONLY);
+    printf("got a writer\n");
+
+    do {
+        if ((num = read(fd, s, 300)) == -1) // 读取FIFO中的数据
+            perror("read");
+        else {
+            s[num] = '\0';
+            printf("tick: read %d bytes: \"%s\"\n", num, s);
+        }
+    } while (num > 0);
+
+    return 0;
+}
+```
+如果没有人写FIFO, tick将在open()上阻塞。一旦有人打开FIFO进行书写，tric就会复活。
+
+试一试!运行speak，它将阻塞，直到你开始在另一个窗口执行tick。(类似的,如果你开始tick，它将阻塞，直到你开始在另一个窗口执行speak.c)在“speak”程序窗口里不停地打字，tick就会把它全部吸走。
+
+当speak仍在运行时跳出tick会发生什么呢?“破管（Broken Pipe）!”这是什么意思?发生的情况是，当FIFO的所有读取器关闭而写入器仍然打开时，写入器将在下一次尝试`write()`时接收信号**SIGPIPE**。此信号的默认信号处理程序打印“Broken Pipe”并退出。当然，可以通过signal()调用捕获SIGPIPE来更优雅地处理这个问题。
+
+最后，如果有多个消费者会发生什么?有时候，一个消费者会得到一切。有时在消费者之间交替得到数据。
+
+#### 5.3不可阻挡标识O_NDELAY
+
+前面我提到过，生产者和消费者都只能阻塞地调用`open()`。那么非阻塞的调用`open()`的办法是在`open()`函数mode参数中设置O_NDELAY标志:
+
+```c
+fd = open(FIFO_NAME, O_RDONLY | O_NDELAY);
+```
+
+如果没有进程打开该文件进行读取，这将导致open()返回-1。
+
+同样地，可以使用O_NDELAY标志打开消费者进程，但这有不同的效果:如果管道中没有数据，那么所有试图从管道中read()的操作都会返回0个读字节。(也就是说，read()将不再阻塞，直到管道中有一些数据。)注意，您不能再判断read()是否返回0，因为管道中没有数据，或者因为写入器已经退出。这是获得非阻塞的代价，但我的建议是尽可能坚持使用阻塞模式。
+
+#### 5.4FIFO总结
+
+把管道的名称写在磁盘上肯定会更容易共享数据，不是吗?不相关的进程可以通过管道通信!
+
+尽管如此，管道的功能可能并不是应用程序所需要的。如果系统支持消息队列，则消息队列可能更适合会提供更快的通信速度。
+
+### 6.文件锁
+
+上面讲了不同进程间通信是通过操作同一块数据来实现的,那么就存在一个问题。大家都操作数据造成异步效果。所以需要锁机制。而这个锁是可以被不同进程锁使用的。
+
+文件锁定为协调文件访问提供了一种非常简单但非常有用的机制。在开始阐述细节之前，让我先介绍一些文件锁定的秘密:
+
+有两种类型的锁定机制:强制性文件锁(mandatory)和尝试性文件锁(advisory)
+
+强锁实际上会阻止对文件的`read()`和`write()`操作。这里不推荐用该锁。
+
+使用尝试性文件锁，进程在文件被锁定时仍然可以对其进行读写操作。那这不少没用吗?不完全如此，因为有一种方法可以让进程在进行读或写操作之前检查锁是否存在。这是一种合作锁定系统。对于几乎所有需要文件锁定的情况，这就足够了。
+
+从现在起，本文中提到任意锁，都指的是尝试锁。
+
+现在，让我进一步分析一下锁的概念。有两种类型的锁(尝试锁):读锁和写锁(也分别称为共享锁和排他锁)。读锁的工作方式是它们不会干扰其他读锁。例如，多个进程可以锁定一个文件，以便在同一时间读取。但是，当一个进程对一个文件有一个写锁时，其他进程都不能激活解锁操作(无论是读锁或写锁)，直到它被放弃。一种简单的方法是，可以同时有多个读取器，但一次只能有一个写入器。
+
+我鼓励使用一种更高级的flock()风格的函数。
+
+#### 6.1设置一个锁
+
+`fcntl()`函数可以完成几乎所有的所有工作，但这里将只使用它来锁定文件。设置锁包括填充一个struct flock(在fcntl.h中声明)来描述需要的锁类型，以匹配的模式打开文件，并使用适当的参数调用fcntl():
+
+```c
+struct flock fl;
+int fd;
+    
+fl.l_type   = F_WRLCK;  /* F_RDLCK, F_WRLCK, F_UNLCK 这里是设置写锁  */
+fl.l_whence = SEEK_SET; /* SEEK_SET, SEEK_CUR, SEEK_END 设置偏移量 */
+fl.l_start  = 0;        /* Offset from l_whence         */
+fl.l_len    = 0;        /* length, 0 = to EOF           */
+fl.l_pid    = getpid(); /* our PID                      */
+
+fd = open("filename", O_WRONLY);
+
+fcntl(fd, F_SETLKW, &fl);  /* F_GETLK, F_SETLK, F_SETLKW */
+```
+
+下面是参数的解读:
+
+|参数|描述|
+| ----- | ----- |
+|l_type|想要设置的锁的类型。如果你想设置读锁、写锁或清除锁，分别是F_RDLCK、F_WRLCK或F_UNLCK。|
+|l_whence|这个字段决定了l_start字段从哪里开始(就像偏移量的偏移量)。它可以是SEEK_SET、SEEK_CUR或SEEK_END，表示文件的开头、当前文件位置或文件的结尾。|
+|l_start|这是以字节为单位的锁的起始偏移量，相对于l_wherth。|
+|l_len|这是以字节为单位的锁区域的长度(从l_start开始，l_start相对于l_where开始)。|
+|l_pid|处理该锁的进程号。使用getpid()来获取它。|
+
+我们的示例中，我们告诉它创建一个类型为F_WRLCK(写锁)的锁，相对于SEEK_SET(文件的开头)开始，偏移量为0，长度为0(0值表示“锁定到文件结尾”)，PID设置为getpid()。
+
+下一步是`open()`文件，因为`flock()`需要被锁定的文件的文件描述符。请注意，当打开文件时，需要在锁中指定的相同模式打开它，如下表所示。如果对于给定的锁类型以错误的模式打开文件，`fcntl()`将返回-1,errno将被设置为EBADF。
+
+|l_type|mode|
+| ----- | ------ |
+|F_RDLCK|O_RDONLY或O_RDWR|
+|F_WRLCK|O_WRONLY或O_RDWR|
+
+最后总结，其实对`fcntl()`的调用实际上是设置、清除或获取锁。`fcntl()`的第二个参数(cmd)告诉它如何处理`struct flock`中传递给它的数据。下面的列表总结了每个`fcntl()`的cmd的作用:
+
+- F_SETLKW 这个参数告诉`fcntl()`尝试获取 `struct flock`结构体中请求的锁。如果无法获得锁(因为已经被其他人锁定了)，`fcntl()`将等待(阻塞)直到锁被清除，然后自己设置锁。这是一个非常有用的命令。
+
+- F_SETLK 这个函数与F_SETLKW几乎相同。唯一的区别是，如果它不能获得锁，它将不会等待。它会立即返回-1。这个函数可以通过将`struct flock`中的`l_type`字段设置为F_UNLCK来清除锁。
+
+- F_GETLK 如果你只想检查是否有一个锁，但不想设置一个，你可以使用这个命令。它将查找所有文件锁，直到找到一个与你在`struct flock`中指定的锁冲突的文件锁。然后，它将冲突锁的信息复制到结构中并返回。如果找不到冲突锁，`fcntl()`将返回传递给它的结构体，然后它将把`l_type`字段设置为F_UNLCK。
+
+在上面的例子中，用F_SETLKW作为参数调用fcntl()，这样它就会阻塞，直到它可以设置锁，然后设置锁并继续。
+
+#### 6.3解锁
+
+上面的所有锁定内容之后，是时候做一些简单的事情了:解锁!事实上，相比之下，这简直是小菜一碟。我将重新使用第一个例子，并在最后添加代码来解锁它:
+
+```c
+struct flock fl;
+int fd;
+
+fl.l_type   = F_WRLCK;  /* F_RDLCK, F_WRLCK, F_UNLCK  这里是设置写锁  */
+fl.l_whence = SEEK_SET; /* SEEK_SET, SEEK_CUR, SEEK_END 设置位偏移量 */
+fl.l_start  = 0;        /* Offset from l_whence         */
+fl.l_len    = 0;        /* length, 0 = to EOF           */
+fl.l_pid    = getpid(); /* our PID                      */
+
+fd = open("filename", O_WRONLY);  /* 获取文件描述符 */
+fcntl(fd, F_SETLKW, &fl);  /* 设置锁,并设置cmd为F_SETLKW */
+.
+.
+.
+fl.l_type   = F_UNLCK;  /* 标志为改为解锁标准 */
+fcntl(fd, F_SETLK, &fl); /* 该文件描述符设置为未锁定状态 */
+```
+
+现在，我将旧的锁定代码保留在那里，以便进行比较，但是您可以看出，我只是将l_type字段更改为F_UNLCK(其他字段完全保持不变!)，并使用F_SETLK命令调用fcntl()。简单!
+
+#### 6.3锁使用样例
+
+lockdemo.c程序等待用户点击return，然后锁定自己的源，等待另一个return，然后解锁它。通过在两个(或多个)窗口中运行这个程序，可以看到程序在等待锁时是如何交互的。
+
+基本上，用法是这样的:如果你在不带命令行参数的情况下运行lockdemo，它将尝试在其源文件(lockdemo.c)上获取一个写锁(F_WRLCK)。如果使用任何命令行参数启动它，它将尝试在它上获得一个读锁(F_RDLCK)。
+
+```c
+#include <stdio.h>
+#include <stdlib.h>
+#include <errno.h>
+#include <fcntl.h>
+#include <unistd.h>
+
+int main(int argc, char *argv[])
+{
+                    /* l_type   l_whence  l_start  l_len  l_pid   */
+    struct flock fl = {F_WRLCK, SEEK_SET,   0,      0,     0 };
+    int fd;
+
+    fl.l_pid = getpid(); // pid为当前进程pid
+
+    if (argc > 1) 
+        fl.l_type = F_RDLCK; // 参数多余一个为读锁,可被多个打开
+
+    if ((fd = open("lockdemo.c", O_RDWR)) == -1) 
+    { 
+        perror("open");
+        exit(1);
+    }
+
+    printf("Press <RETURN> to try to get lock: ");
+    getchar();
+    printf("Trying to get lock...");
+
+    if (fcntl(fd, F_SETLKW, &fl) == -1) 
+    {
+        perror("fcntl");
+        exit(1);
+    }
+
+    printf("got lock\n");
+    printf("Press <RETURN> to release lock: ");
+    getchar();
+
+    fl.l_type = F_UNLCK;  /* 设置标志位为解锁 */
+
+    if (fcntl(fd, F_SETLK, &fl) == -1) 
+    {
+        perror("fcntl");
+        exit(1);
+    }
+
+    printf("Unlocked.\n");
+
+    close(fd);
+
+    return 0;
+}
+```
+
+编译该程序然后多开几个窗口里运行一下。请注意，当一个lockdemo拥有一个读锁时，程序的其他实例可以毫无问题地获得它们自己的读锁。只有当获得了写锁时，其他进程才不能获得任何类型的锁。
+
+另一件需要注意的事情是，如果在文件的同一区域上有任何读锁，则无法获得写锁。等待获得写锁的进程将一直等待，直到所有读锁都被清除。这样做的一个结果是，您可以不断地堆积读锁(因为读锁不会阻止其他进程获得读锁)，任何等待写锁的进程都将坐在那里挨饿。如果有一个进程正在等待一个写锁，没有任何规则可以阻止您添加更多的读锁。你一定要小心。

@@ -41,8 +41,8 @@
 * [IPC进程间通信](进程通信.md)
 	* 1. 管道
 
-	| [pipe](docs/pipe.md) |  [mkfifo](docs/mkfifo.md) |
-	| ------ | ------ |
+	| [pipe](docs/pipe.md) |  [mkfifo](docs/mkfifo.md) | [mknod](docs/mknod.md) |
+	| ------ | ------ | -------- |
 
 
 	* 2. [信号处理](docs/信号处理.md)
@@ -56,6 +56,8 @@
 		* [sigsuspend](docs/sigsuspend.md)
 		* [sigaltstack](docs/sigaltstack.md)
 	* 3.1 [IPC对象](docs/IPC.md) <kbd>System V</kbd>
+
+	特殊： [共享/文件锁](file_lock.md)
 
 	|[消息队列](docs/消息队列.md)|[信号量](docs/信号量.md)|[共享内存](docs/共享内存.md)|
 	| ------------------- | ----------------- | ------------------- |
