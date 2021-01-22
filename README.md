@@ -55,7 +55,9 @@
 		* [信号阻塞](docs/信号阻塞.md)
 		* [sigsuspend](docs/sigsuspend.md)
 		* [sigaltstack](docs/sigaltstack.md)
-	* 3.1 [IPC对象](docs/IPC.md) <kbd>System V</kbd>
+	* 3.1 [IPC对象](docs/IPC.md) <kbd>System V</kbd> 
+
+	关键函数: 用于数据通信的中间文件标识id获取函数 [ftok](docs/ftok.md)
 
 	特殊： [共享/文件锁](file_lock.md)
 
