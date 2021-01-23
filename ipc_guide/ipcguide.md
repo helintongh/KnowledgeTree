@@ -613,7 +613,7 @@ int main(void)
     return 0;
 }
 ```
-如果没有人写FIFO, tick将在open()上阻塞。一旦有人打开FIFO进行书写，tric就会复活。
+如果没有人再speak端写入数据到FIFO, tick将在open()上阻塞。一旦有人打开FIFO进行书写，tric就会复活。
 
 试一试!运行speak，它将阻塞，直到你开始在另一个窗口执行tick。(类似的,如果你开始tick，它将阻塞，直到你开始在另一个窗口执行speak.c)在“speak”程序窗口里不停地打字，tick就会把它全部吸走。
 
@@ -792,4 +792,301 @@ int main(int argc, char *argv[])
 
 编译该程序然后多开几个窗口里运行一下。请注意，当一个lockdemo拥有一个读锁时，程序的其他实例可以毫无问题地获得它们自己的读锁。只有当获得了写锁时，其他进程才不能获得任何类型的锁。
 
-另一件需要注意的事情是，如果在文件的同一区域上有任何读锁，则无法获得写锁。等待获得写锁的进程将一直等待，直到所有读锁都被清除。这样做的一个结果是，您可以不断地堆积读锁(因为读锁不会阻止其他进程获得读锁)，任何等待写锁的进程都将坐在那里挨饿。如果有一个进程正在等待一个写锁，没有任何规则可以阻止您添加更多的读锁。你一定要小心。
+另一件需要注意的事情是，如果在文件的同一区域上有任何读锁，则无法获得写锁。等待获得写锁的进程将一直等待，直到所有读锁都被清除。这样做的一个结果是，尽管可以不断地堆积读锁(因为读锁不会阻止其他进程获得读锁)，但这会造成任何等待写锁的进程都将坐在那里挨饿。如果有一个进程正在等待一个写锁，没有任何规则可以阻止用户添加更多的读锁。一定要小心这种情况。
+
+#### 6.4总结
+
+锁是有用的,但是有时候比如生产者和消费者场景的时候,文件锁有可能就不太够用了。此时需要信号量机制了。后面也会介绍到。
+
+### 7.消息队列
+
+消息队列的工作方式有点像FIFO，但支持一些额外的功能。通常情况下，消息是按照放入队列的顺序从队列中取出的。但是，有一些方法可以在某些消息到达队列前端之前将它们从队列中取出。这就像插队一样。
+
+在使用方面，进程可以创建新的消息队列，也可以连接到现有的消息队列。在后一种方式中，两个进程可以通过相同的消息队列交换信息。
+
+关于System V IPC还有一件事:当你创建一个消息队列时，它不会消失，直到你销毁它。所有曾经使用过它的进程都可以退出，但队列仍然存在。一个好的实践是使用`ipcs`命令来检查您未使用的消息队列是否只是漂浮在那里。可以使用`ipcrm`命令销毁它们，这比让系统管理员访问告诉您已经捕获了系统上所有可用的消息队列要好得多。
+
+
+#### 7.1怎么找到消息队列呢?
+
+首先，想要连接到一个队列，或者如果它不存在就创建它。实现此目的的调用是msgget()系统调用:
+
+```c
+int msgget(key_t key, int msgflg);
+```
+msgget()成功时返回消息队列ID，失败时返回-1(当然，它还设置errno)。
+
+|参数|描述|
+| ------- | ------- |
+|key|是系统范围内的唯一标识符，描述你想要连接(或创建)的队列。其他所有想要连接到这个队列的进程都必须使用相同的key。|
+|msgflg|msgflg告诉msgget()如何处理有问题的队列。要创建一个队列，这个字段必须设置为IPC_CREAT,它还指定队列权限,队列的权限是按位计算的|
+
+#### 7.2如何得到一个key?
+
+实际上`key_t`就是`long`类型,你可以用任何号码。但是，如果硬编码该数字，而其他一些不相关的程序硬编码相同的数字，但想要另一个队列呢?所以我们需要一个函数生成特定的唯一的一个数字,这个函数就是`ftok()`,该函数有两个参数返回一个key。
+
+```c
+key_t ftok(const char *path, int id);
+```
+
+path必须是这个进程可以读取的文件。另一个参数id通常被设置为任意的字符，比如'A'。ftok()函数使用关于命名文件的信息(如inode号等)和id为msgget()生成一个可能唯一的key。想要使用相同队列的程序必须使用相同的key，因此它们必须将相同的形参传递给ftok()。
+
+```c
+#include <sys/msg.h>
+
+key = ftok("/home/he/somefile", 'b');
+msqid = msgget(key, 0666 | IPC_CREAT);
+```
+
+在上面的示例中，我将队列的权限设置为666(或者rw-rw-rw-，如果这样对您更有意义的话)。现在我们有了msqid，它将用于发送和接收来自队列的消息。
+
+#### 7.3把消息送入队列
+
+使用msgget()连接到消息队列之后，就可以发送和接收消息了。
+
+发送需要注意:
+每条消息由两部分组成，这两部分定义在`struct msgbuf`中，如sys/msg.h中定义的:
+
+```c
+struct msgbuf {
+    long mtype;
+    char mtext[1];
+};
+```
+队列中检索消息时将使用字段mtype，可以将其设置为任何正数。mtext是将被添加到队列中的数据。
+
+只能添加一个字符到队列里?当然不是,你可以添加任何消息放到队列里去，只要第一个元素是long。
+
+```c
+struct pirate_msgbuf {
+    long mtype;  /* 必须有long字段,最好放在首位 */
+    struct pirate_info {
+        char name[30];
+        char ship_type;
+        int notoriety;
+        int cruelty;
+        int booty_value;
+    } info;
+};
+```
+
+如何将这个信息传递给消息队列呢?答案很简单，我的朋友们:只要使用msgsnd():
+
+```c
+int msgsnd(int msqid, const void *msgp,
+           size_t msgsz, int msgflg);
+```
+
+- msqid：消息队列标识符(由msgget生成)
+
+- msgp：指向用户自定义的缓冲区（msgp），想放入消息队列的数据
+
+- msgsz:接收信息的大小。范围在0～系统对消息队列的限制值
+
+- msgflg:指定在达到系统为消息队列限定的界限时应采取的操作。
+
+	* - IPC_NOWAIT 如果需要等待，则不发送消息并且调用进程立即返回，errno为EAGAIN
+	* - 如果设置为0，则调用进程挂起执行，直到达到系统所规定的最大值为止，并发送消息
+
+获取要发送的数据大小的最佳方法是一开始就正确设置它。正如所看到的，结构的第一个字段应该是一个`long`类型。为了安全和便于携带，应该只有一个额外的字段。如果你需要多个，可以像上面的pirate_msgbuf那样把它包装在一个结构体中。
+
+获取要发送的数据的大小是多大呢?只需取第二个字段的大小:
+
+```c
+struct cheese_msgbuf {
+    long mtype;
+    char name[20];
+};
+
+/* 计算要发送的数据大小: */
+
+struct cheese_msgbuf mbuf;
+int size;
+
+size = sizeof mbuf.name;
+
+/* 获取cheese_msgbuf,name字段大小的另一种办法 */
+
+size = sizeof ((struct cheese_msgbuf*)0)->name;
+```
+
+或者，如果你有很多不同的字段，把它们放到一个结构中，然后使用sizeof操作符。这样做会更加方便，因为子结构可以有一个名称来引用。下面的代码片段显示了一个女明星的信息被添加到消息队列:
+
+```c
+#include <sys/msg.h>
+#include <stddef.h>
+
+key_t key;
+int msqid;
+struct pirate_msgbuf pmb = {2, { "Utsunomiya Shion", 'female', 1, 3, 1994 } };
+
+key = ftok("/home/he/somefile", 'b');
+msqid = msgget(key, 0666 | IPC_CREAT);
+
+/* 让她排队 */
+/* pirate_info是子结构 */
+msgsnd(msqid, &pmb, sizeof(struct pirate_info), 0);
+```
+
+除了记住对所有这些函数的返回值进行错误检查之外，这就是它的全部内容。注意，在这里任意地将mtype字段设置为2。这在下一节中很重要。
+
+#### 7.4从队列里接收消息
+
+现在Utsunomiya Shion困在我们的消息队列里了，我们怎么把她救出来?可以想象，与`msgsnd()`相对应的是:`msgrcv()`。就这么简单。
+
+在msgrcv()调用中有一些新东西需要注意:
+
+```c
+int msgrcv(int msqid, void *msgp, size_t msgsz,
+           long msgtyp, int msgflg);
+```
+
+在调用中指定的2是请求的msgtyp。回想一下，在本文的msgsnd()部分中将mtype任意设置为2,这就是从队列中检索到的那个。
+
+实际上，`msgrcv()`的行为可以通过选择正的、负的或零的msgtyp来大幅修改:
+
+- msgtyp=0：收到的第一条消息，任意类型。
+
+- msgtyp>0：收到的第一条msgtyp类型的消息。
+
+- msgtyp<0：收到的第一条最低类型（小于或等于msgtyp的绝对值）的消息。
+
+通常的情况是，只是想要队列中的下一条消息，而不管它是什么mtype。因此，需要将msgtyp参数设置为0。
+
+#### 7.5摧毁一个队列
+
+有时你不得不销毁消息队列。就像我之前说的，它们会一直存在直到你明确地移除它们;这样做不会浪费系统资源是很重要的。你已经用这个消息队列一整天了，它已经老化了。你想要抹掉它。有两种方式:
+
+1. 使用Linux命令ipcs获取已定义的消息队列列表，然后使用命令ipcrm删除该队列。
+
+2. 写一个程序来帮你做。
+
+通常，后一种选择是最合适的，因为可能希望程序在某个时候或其他时候清理队列。为此需要引入另一个函数:`msgctl()`。
+```c
+int msgctl(int msqid, int cmd,
+           struct msqid_ds *buf);
+```
+
+msqid是从msgget()获得的队列标识符。重要的参数是cmd，它告诉msgctl()如何行为。它可以是各种各样的东西，但在此只讨论IPC_RMID，它用于删除消息队列。为了IPC_RMID的目的，可以将buf参数设置为NULL。
+
+假设我们有上面创建的队列来容纳女明星。可以通过下面的调用来销毁这个队列:
+
+```c
+#include <sys/msg.h>
+.
+.
+msgctl(msqid, IPC_RMID, NULL);
+```
+这样消息队列也不复存在了。
+
+#### 7.6示例程序
+
+为了完整起见，我将写一对使用消息队列进行通信的程序。首先，kirk.c将消息添加到消息队列中，然后spock.c检索它们。
+
+kirk.c如下
+
+```c
+#include <stdio.h>
+#include <stdlib.h>
+#include <errno.h>
+#include <string.h>
+#include <sys/types.h>
+#include <sys/ipc.h>
+#include <sys/msg.h>
+
+struct my_msgbuf {
+    long mtype;
+    char mtext[200];
+};
+
+int main(void)
+{
+    struct my_msgbuf buf;
+    int msqid;
+    key_t key;
+
+    if ((key = ftok("kirk.c", 'B')) == -1)  // 直接用kirk.c源文件通信,这不好这里只是示范用。最好自己随意选择一个文件
+    {
+        perror("ftok");
+        exit(1);
+    }
+
+    if ((msqid = msgget(key, 0644 | IPC_CREAT)) == -1) 
+    {
+        perror("msgget");
+        exit(1);
+    }
+    
+    printf("Enter lines of text, ^D to quit:\n");
+
+    buf.mtype = 1; /*在这种情况下我们并不关心是什么类型的消息,设置为0也可 */
+
+    while(fgets(buf.mtext, sizeof buf.mtext, stdin) != NULL) 
+    {
+        int len = strlen(buf.mtext);
+
+        /* 如果存在换行符，则在末尾删除换行符 */
+        if (buf.mtext[len-1] == '\n') buf.mtext[len-1] = '\0';
+
+        if (msgsnd(msqid, &buf, len+1, 0) == -1) /* +1 存放 '\0' */
+            perror("msgsnd");
+    }
+
+    if (msgctl(msqid, IPC_RMID, NULL) == -1) 
+    {
+        perror("msgctl");
+        exit(1);
+    }
+
+    return 0;
+}
+```
+kirk的工作方式是允许你输入几行文本。每一行都被绑定到一条消息中，并添加到消息队列中。然后由spock读取消息队列。
+
+spock.c
+```c
+#include <stdio.h>
+#include <stdlib.h>
+#include <errno.h>
+#include <sys/types.h>
+#include <sys/ipc.h>
+#include <sys/msg.h>
+
+struct my_msgbuf {
+    long mtype;
+    char mtext[200];
+};
+
+int main(void)
+{
+    struct my_msgbuf buf;
+    int msqid;
+    key_t key;
+
+    if ((key = ftok("kirk.c", 'B')) == -1) {  /* 和kirk.c的key保持一致 */
+        perror("ftok");
+        exit(1);
+    }
+
+    if ((msqid = msgget(key, 0644)) == -1) { /* 连接上队列 */
+        perror("msgget");
+        exit(1);
+    }
+    
+    printf("spock: ready to receive messages, captain.\n");
+
+    for(;;) { /* Spock一直等待并接收队列中的数据! */
+        if (msgrcv(msqid, &buf, sizeof buf.mtext, 0, 0) == -1) {
+            perror("msgrcv");
+            exit(1);
+        }
+        printf("spock: \"%s\"\n", buf.mtext);
+    }
+
+    return 0;
+}
+```
+
+注意，在对msgget()的调用中，spock不包含IPC_CREAT选项。我们让kirk来创建消息队列，如果不这么做，spock就会返回一个错误。
+
+请注意，当你在两个单独的窗口中运行时，你杀死了其中一个窗口。也可以试着运行两个kirk(此时一个spock)或两个spock(此时一个kirk)，以了解当你有两个读者或两个作者时会发生什么。另一个有趣的演示是运行kirk，输入一堆信息，然后运行spock，看它在一次行动中检索所有信息。摆弄一下这些玩具程序将帮助您了解到底发生了什么。
