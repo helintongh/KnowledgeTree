@@ -57,7 +57,7 @@
 		* [sigaltstack](docs/sigaltstack.md)
 	* 3.1 [IPC对象](docs/IPC.md) <kbd>System V</kbd> 
 
-	关键函数: 用于数据通信的中间文件标识id获取函数 [ftok](docs/ftok.md)
+	关键函数: 获取一个系统中唯一的key值 [ftok](docs/ftok.md)
 
 	特殊： [共享/文件锁](file_lock.md)
 
@@ -79,3 +79,5 @@
 
 	* [带外数据](docs/带外数据.md)
 	  * [sockatmark](README.md)
+
+	  
