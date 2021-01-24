@@ -59,14 +59,14 @@
 
 	关键函数: 获取一个系统中唯一的key值 [ftok](docs/ftok.md)
 
-	特殊： [共享/文件锁](file_lock.md)
+	特殊： [共享/文件锁](file_lock.md)，以及[内存映射](内存映射.md)
 
-	|[消息队列](docs/消息队列.md)|[信号量](docs/信号量.md)|[共享内存](docs/共享内存.md)|
-	| ------------------- | ----------------- | ------------------- |
-	|[msgget](docs/msgget.md)|[semget](docs/semget.md)|[shmget](docs/shmget.md)|
-	|[msgctl](docs/msgctl.md)|[semctl](docs/semctl.md)|[shmctl](docs/shmctl.md)|
-	|[msgsnd](docs/msgsnd-msgrcv.md)|[semop](docs/semop.md)|[shmat](docs/shmat-shmdt.md)|
-	|[msgsnd](docs/msgsnd-msgrcv.md)|         |[shmdt](docs/shmat-shmdt.md)|
+	|[消息队列](docs/消息队列.md)|[信号量](docs/信号量.md)|[共享内存](docs/共享内存.md)|[内存映射](内存映射.md)|
+	| ------------------- | ----------------- | ------------------- | ------------------- |
+	|[msgget](docs/msgget.md)|[semget](docs/semget.md)|[shmget](docs/shmget.md)|[mmap](docs/mmap.md)|
+	|[msgctl](docs/msgctl.md)|[semctl](docs/semctl.md)|[shmctl](docs/shmctl.md)|[munmap](docs/munmap.md)|
+	|[msgsnd](docs/msgsnd-msgrcv.md)|[semop](docs/semop.md)|[shmat](docs/shmat-shmdt.md)|            |
+	|[msgsnd](docs/msgsnd-msgrcv.md)|         |[shmdt](docs/shmat-shmdt.md)|        |
 
 	* 3.2 IPC对象 <kbd>POSIX</kbd> POSIX的IPC对象多用在线程同步方面,将放在多线程中概述。
 

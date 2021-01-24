@@ -31,9 +31,9 @@ struct ipc_perm {
 ### 其他函数
 |分类|创建函数|控制函数|独立函数
 |-----|:---:|:-----:|:-----:
-|消息队列|[msgget](msgget.md)|[msgctl](msgctl.md)|[msgsnd/msgrcv](msgsnd-msgrcv.md)
-|信号量|[semget](semget.md)|[semctl](semctl.md)|[semop](semop.md)
-|共享内存|[shmget](shmget.md)|[shmctl](shmctl.md)|[shmat/shmdt](shmat-shmdt.md)
+|[消息队列](消息队列.md)|[msgget](msgget.md)|[msgctl](msgctl.md)|[msgsnd/msgrcv](msgsnd-msgrcv.md)
+|[信号量](信号量.md)|[semget](semget.md)|[semctl](semctl.md)|[semop](semop.md)
+|[共享内存](共享内存.md)|[shmget](shmget.md)|[shmctl](shmctl.md)|[shmat/shmdt](shmat-shmdt.md)
 
 ### 操作
 三个函数中都会使用一个**操作**参数。有四个操作是公共操作，定义在ipc.h中。  
