@@ -1142,3 +1142,625 @@ semid = semget(key, 10, 0666 | IPC_CREAT);
 (W. Richard Stevens称)这个问题可称为信号量的“致命缺陷”。他通过创建带有IPC_EXCL标志的信号量集解决了这个问题。如果进程1首先创建它，进程2将在调用时(进程1还未初始化信号量集)返回一个错误(errno设置为EEXIST)。此时，进程2将不得不等待，直到进程1初始化信号量。
 
 进程2是怎么知道信号量集已初始化呢?进程2可以使用IPC_STAT标志重复调用semctl()，并查看返回的`struct semid_ds`结构的`sem_otime`成员。如果它是非零，则意味着进程1已经使用`semop()`对信号量执行了操作，该操作是为了初始化信号量集。
+
+我会写一个示例代码semdemo.c。
+
+在写之前先来看一看`semctl()`函数吧。
+
+#### 8.2使用semctl()控制你的信号量
+
+创建了信号量集之后，必须将它们初始化为正值，以表明资源是可用的。函数semctl()允许对单个信号量或完整的信号量集进行原子值更改。
+
+```c
+int semctl(int semid, int semnum,
+           int cmd, ... /*arg*/);
+```
+
+semid是从前面对semget()的调用中获得的信号量集id。semnum是操纵信号量的ID的值。cmd是对有问题的信号量做的操作。最后一个“参数”，“arg”，如果需要，需要是一个union semun，它将由你在你的代码中定义为以下之一:
+
+```c
+union semun {
+    int val;               /* 仅用于SETVAL */
+    struct semid_ds *buf;  /* 用于IPC_STAT和IPC_SET */
+    ushort *array;         /* 用于GETALL和SETALL */
+};
+```
+`union semun`中的各个字段的使用取决于`setctl()`的cmd参数的值:
+
+共有的ipc的四个操作:
+
+
+- IPC_RMID删除消息队列。从系统中删除给消息队列以及仍在该队列上的所有数据，这种删除立即生效。 仍在使用这一消息队列的其他进程在它们下一次试图对此队列进行操作时，将出错，并返回EIDRM。 此命令只能由如下两种进程执行： 其有效用户ID等于msg_perm.cuid或msg_perm.guid的进程。 另一种是具有超级用户特权的进程。
+
+- IPC_SET设置消息队列的属性。按照buf指向的结构中的值，来设置此队列的msqid_id结构。 该命令的执行特权与上一个相同。
+
+- IPC_STAT读取消息队列的属性。取得此队列的msqid_ds结构，并存放在buf中。
+
+- IPC_INFO读取消息队列基本情况。
+
+- GETVAL //返回的是semnum的值
+- GETALL //设置semnum为0，那么获取信号集合的地址传递给第四个参数。返回值为0，-1
+- GETNCNT //设置semnum为0，返回值为等待信号量值的递增进程数，否则返回-1
+- GETZCNT //设置semnum为0，返回值是等待信号量值的递减进程数，否则返回-1
+- SETVAL //将第四个参数指定的值设置给编号为semnum的信号量。返回值为0，1
+- SETALL //设置semnum为0，将第四个参数传递个所有信号量。返回值0，1
+
+面是union semun中使用的结构体semid_ds的内容:
+
+```c
+/*位于/usr/include/linux*/
+struct semid_ds {
+	struct ipc_perm	sem_perm;		/* 权限 .. see ipc.h */
+	__kernel_time_t	sem_otime;		/* 最近semop时间 */
+	__kernel_time_t	sem_ctime;		/*最近 修改时间*/
+	struct sem	*sem_base;		/* 队列第一个信号量 */
+	struct sem_queue *sem_pending;		/* 阻塞信号量 */
+	struct sem_queue **sem_pending_last;	/* 最后一个阻塞信号量*/
+	struct sem_undo	*undo;	/* undo队列 */
+	unsigned short	sem_nsems; /* no. of semaphores in array */
+};
+```
+
+稍后将在下面的示例代码中编写`initsem()`时使用sem_otime成员。
+
+#### 8.3semop()原子操作
+
+所有设置、获取或检查并设置信号量的操作都使用semop()系统调用。这个系统调用是通用的，它的功能是由传递给它的struct sembuf结构来决定的:
+
+```c
+struct sembuf{
+        unsigned short sem_num;  /* 信号量标号 */
+        short          sem_op;   /* 信号量操作（加减） */
+        short          sem_flg;  /* 操作标识 */
+};
+```
+
+当然，sem_num是您想要操作的信号量集中的数量。然后，sem_op是你想对这个信号量做的事情。根据sem_op是正的、负的还是零，这有不同的含义，如下表所示:
+
+- sem_op是要进行的操作（PV操作）：
+	* 如果为正整数，表示增加信号量的值（若为3，则加上3）
+	* 如果为负整数，表示减小信号量的值
+	* 如果为0，表示对信号量当前值进行是否为0的测试
+
+
+所以，基本上，你要做的是加载一个带有你想要的任何值的struct sembuf，然后调用semop()，像这样:
+
+```c
+int semop(int semid, struct sembuf *sops,
+          unsigned int nsops);
+```
+
+semid参数是从对semget()的调用中获得的数字。接下来是sop，它是一个指向struct sembuf的指针，可以用信号量命令填充该struct sembuf。如果你愿意，还可以创建一个struct sembufs数组，以便同时执行一大堆信号量操作。semop()知道你在做这个的方式是nsop参数，它告诉你发送了多少struct sembufs给它。如果只有一个，把1作为参数。
+
+sembuf结构中还有一个字段是sem_flg字段，它允许程序指定进一步修改semop()调用的效果的标志。
+
+其中一个标志是IPC_NOWAIT，顾名思义，它会导致对semop()的调用在遇到通常会阻塞的情况时返回错误EAGAIN。这对于可能想要“轮询”以查看是否可以分配资源的情况很有用。
+
+另一个非常有用的标志是SEM_UNDO标志。这导致semop()以某种方式记录对信号量所做的更改。当程序退出时，内核将自动撤销所有用SEM_UNDO标志标记的更改。当然，程序应该尽最大努力释放它使用信号量标记的任何资源，但有时当程序获得SIGKILL或发生其他可怕的崩溃时就没法自动撤销该更改了。
+
+#### 8.4摧毁一个信号量
+
+有两种方法可以消除信号量:一种是使用Unix命令ipcrm。另一种方法是通过调用semctl()，并将cmd设置为IPC_RMID。
+
+基本上，需要调用semctl()并将semid设置为想要裁减的信号量ID。cmd应该设置为IPC_RMID，它告诉semctl()删除这个信号量集。semnum参数在IPC_RMID上下文中没有任何意义，可以设置为0。
+下面是一个删除信号量集的示例:
+
+```c
+int semid; 
+.
+.
+semid = semget(...);
+.
+.
+semctl(semid, 0, IPC_RMID);
+```
+#### 8.5示例程序
+
+有两个。第一,semdemo.c。如果有必要，创建信号量，并在一个演示中对它执行一些假装的文件锁定，非常类似于文件锁定文档中的操作。第二个程序semrm.c用于销毁信号量(同样，可以使用ipcrm来完成此任务)。
+
+其思想是在几个窗口中运行 semdemo.c生成的可执行程序，查看所有进程是如何交互的。完成后，使用semrm.c生成的可执行程序删除信号量。还可以尝试在运行semdemo.c时删除信号量，以查看生成的错误类型。
+
+下面是semdemo.c
+```c
+#include <stdio.h>
+#include <stdlib.h>
+#include <unistd.h>
+#include <errno.h>
+#include <sys/types.h>
+#include <sys/ipc.h>
+#include <sys/sem.h>
+
+#define MAX_RETRIES 10
+
+union semun {
+    int val;
+    struct semid_ds *buf;
+    ushort *array;
+};
+
+/*
+** initsem() -- 改编于 W. Richard Stevens' UNIX 网络编程
+*/
+int initsem(key_t key, int nsems)  /* 参数key是从ftok()获取的 */
+{
+    int i;
+    union semun arg;
+    struct semid_ds buf;
+    struct sembuf sb;
+    int semid;
+
+    semid = semget(key, nsems, IPC_CREAT | IPC_EXCL | 0666);
+
+    if (semid >= 0) 
+    { /* 大于0说明创建成功了并返回相应消息队列标识符 */
+        sb.sem_op = 1; sb.sem_flg = 0;
+        arg.val = 1;
+
+        printf("press return\n"); getchar();
+
+        for(sb.sem_num = 0; sb.sem_num < nsems; sb.sem_num++) 
+        { 
+            /* 使用semop()来“释放”信号量 */
+            /* 这将设置sem_otime字段，如下所示. */
+            if (semop(semid, &sb, 1) == -1) 
+            {
+                int e = errno;
+                semctl(semid, 0, IPC_RMID); /* 清除队列 */
+                errno = e;
+                return -1; /* 发生了错误并检查errno */
+            }
+        }
+
+    } 
+    else if (errno == EEXIST) 
+    { /* 已经存在了 */
+        int ready = 0;
+
+        semid = semget(key, nsems, 0); /* 获取存在队列的id */
+        if (semid < 0) return semid; /* 发生了错误并检查errno */
+
+        /* 等待其他进程初始化信号量: */
+        arg.buf = &buf;
+        for(i = 0; i < MAX_RETRIES && !ready; i++) 
+        {
+            semctl(semid, nsems-1, IPC_STAT, arg);
+            if (arg.buf->sem_otime != 0) 
+            {
+                ready = 1;
+            } 
+            else 
+            {
+                sleep(1);
+            }
+        }
+        if (!ready) 
+        {
+            errno = ETIME;
+            return -1;
+        }
+    } 
+    else 
+    {
+        return semid; /* 发生了错误并检查errno */
+    }
+
+    return semid;
+}
+
+int main(void)
+{
+    key_t key;
+    int semid;
+    struct sembuf sb;
+    
+    sb.sem_num = 0;
+    sb.sem_op = -1;  /* 设置标志为用来分配资源 */
+    sb.sem_flg = SEM_UNDO;
+
+    if ((key = ftok("semdemo.c", 'J')) == -1) {
+        perror("ftok");
+        exit(1);
+    }
+
+    /* 获取由semdemo.c为载体的信号量集: */
+    if ((semid = initsem(key, 1)) == -1) {
+        perror("initsem");
+        exit(1);
+    }
+
+    printf("Press return to lock: ");
+    getchar();
+    printf("Trying to lock...\n");
+
+    if (semop(semid, &sb, 1) == -1)  // 占用sem信号量资源,锁住其他的运行不了了因为信号量为1
+    { 
+        perror("semop");
+        exit(1);
+    }
+
+    printf("Locked.\n");
+    printf("Press return to unlock: ");
+    getchar();
+
+    sb.sem_op = 1; /* 释放资源 */
+    if (semop(semid, &sb, 1) == -1) {
+        perror("semop");
+        exit(1);
+    }
+
+    printf("Unlocked\n");
+
+    return 0;
+}
+```
+
+semrm.c如下:
+
+```c
+#include <stdio.h>
+#include <stdlib.h>
+#include <errno.h>
+#include <sys/types.h>
+#include <sys/ipc.h>
+#include <sys/sem.h>
+
+int main(void)
+{
+    key_t key;
+    int semid;
+
+    if ((key = ftok("semdemo.c", 'J')) == -1) {
+        perror("ftok");
+        exit(1);
+    }
+
+    /* 获取由semdemo.c为载体的信号量集: */
+    if ((semid = semget(key, 1, 0)) == -1) {
+        perror("semget");
+        exit(1);
+    }
+
+    /* 删除信号量集: */
+    if (semctl(semid, 0, IPC_RMID) == -1) {
+        perror("semctl");
+        exit(1);
+    }
+
+    return 0;
+}
+```
+
+#### 8.6信号量总结
+
+不要低估了信号量的用处。我向你保证，它们在并发情况下非常非常有用。它们通常也比普通的文件锁更快。同样，你也可以在其他非文件的东西上使用它们，比如共享内存段!事实上，坦白地说，有时没有他们的生活是很难的。
+
+### 9.共享内存
+
+关于共享内存很酷的一点是，它就如它的名字一般:进程之间共享的一段内存。想想它的潜力吧!可以为一个多人游戏分配一个块的玩家信息，并让每个进程(玩家)有访问它的能力!
+
+像往常一样，有很多的陷阱需要提防，但从长远来看，这一切都很容易。只是连接到共享内存，并获得一个指向该内存的指针。可以对这个指针进行读写操作，你所做的所有改变都会被连接到这个段上的其他人看到。再简单不过了。
+
+#### 9.1创建共享内存并连接
+
+类似于System V IPC的其他形式，共享内存段是通过shmget()调用创建和连接的:
+
+```c
+int shmget(key_t key, size_t size,
+           int shmflg);
+```
+
+成功完成后，shmget()返回共享内存段的标识符。key参数的创建与前文中消息队列中所示的一样，使用ftok()。下一个参数size是共享内存的大小(以字节为单位)。最后，如果要创建段，shmflg应该设置为IPC_CREAT。(每次都指定IPC_CREAT也无妨——如果段已经存在，它将简单地连接您。)
+
+下面的例子调用创建一个1K的段，具有644个权限(rw-r——r——):
+
+```c
+key_t key;
+int shmid;
+
+key = ftok("/home/he/somefile3", 'R');
+shmid = shmget(key, 1024, 0644 | IPC_CREAT);
+```
+但是如何从shmid句柄获得指向该数据的指针呢?答案在下面一节的shmat()调用中。
+
+#### 9.2一个指向共享内存的指针
+
+在可以使用一个共享内存段之前，必须使用`shmat()`调用将你自己附加到它身上:
+
+```c
+key_t key;
+int shmid;
+char *data;
+
+key = ftok("/home/he/somefile3", 'R');
+shmid = shmget(key, 1024, 0644 | IPC_CREAT);
+data = shmat(shmid, (void *)0, 0);
+```
+
+有一个指向共享内存段的指针!注意，shmat()返回一个void\*型的指针，在本例中，我们将它视为一个char指针。可以按照自己喜欢的方式对待这段共享内存，这取决于其中包含的数据类型。指向结构体指针和其他任何东西一样都是可以接受的。
+
+有趣的是shmat()在失败时返回-1。但是如何在空指针中得到-1呢?只需要在比较过程中进行强制转换以检查错误:
+
+```c
+data = shmat(shmid, (void *)0, 0);
+if (data == (char *)(-1))
+    perror("shmat");
+```
+
+现在所要做的就是将它所指向的数据更改为普通的指针样式。下一节中有一些示例。
+
+#### 9.3共享内存的读与写
+
+假设你有上面例子中的数据指针。它是一个字符指针，所以我们将从它读取和写入字符。此外，为了简单起见，假设1K的共享内存包含一个以`'\0'` (空)结束的字符串。
+
+再简单不过了。因为它只是一个字符串，可以这样打印它:
+
+```c
+printf("shared contents: %s\n", data);
+```
+也可以很容易地在里面存储一些东西:
+```c
+printf("Enter a string: ");
+gets(data);
+```
+
+当然，就像我前面说的，除了字符之外，还可以有其他数据。我只是举个例子。我将假设你对C中的指针足够熟悉，可以处理插入其中的任何类型的数据。
+
+#### 9.4分离和删除共享内存
+
+当你使用完共享内存段后，你的程序应该使用shmdt()调用将自己从它分离出来:
+
+```c
+int shmdt(void *shmaddr);
+```
+
+唯一的参数shmaddr是您从shmat()获得的地址。错误时返回-1，成功时返回0。
+
+当你从片段中分离出来时，它不会被破坏。当每个人都脱离它时，它也不会消失。你必须使用调用shmctl()来销毁它，类似于对其他System V IPC函数的控制调用:
+
+```c
+shmctl(shmid, IPC_RMID, NULL);
+```
+
+上面的调用删除共享内存段，假设没有其他连接到它。当然，shmctl()函数的功能远不止于此。
+
+与往常一样，可以使用ipcrm命令从命令行销毁共享内存段。另外，请确保不要留下任何使用过的共享内存段，以免浪费系统资源。可以使用ipcs命令查看拥有的所有System V IPC对象。
+
+#### 9.5并发问题
+
+什么是并发性问题?当有多个进程修改共享内存会出现一些问题。举个例子:当对一个共享对象有多个写入器时,多个写入器对该共享内存的数据进行更新时，可能会出现某些错误。这种并发访问几乎总是一个问题。
+
+解决这个问题的方法是在进程写入共享内存段时使用信号量来锁定它。(有时锁将包含对共享内存的读和写，这取决于你正在做什么。)
+
+关于并发性的真正讨论超出了本文的范围(C和C++并发安全的问题太大太难了这里不赘述)
+
+#### 9.6示例代码
+
+现在，我已经向你介绍了不使用信号量并发访问共享内存段的所有危险，下面我将展示一个演示。由于这不是一个任务关键型应用程序，而且不太可能与其他进程同时访问共享数据，因此为了简单起见，我将不使用信号量。
+
+这个程序做两件事中的一件:如果不带命令行参数运行它，它将打印共享内存的内容。如果给它一个命令行参数，它会将该参数存储在共享内存中。
+
+下面是shmdemo.c
+```c
+#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
+#include <sys/types.h>
+#include <sys/ipc.h>
+#include <sys/shm.h>
+
+#define SHM_SIZE 1024  /* 共享内存大小1k */
+
+int main(int argc, char *argv[])
+{
+    key_t key;
+    int shmid;
+    char *data;
+    int mode;
+
+    if (argc > 2) {
+        fprintf(stderr, "usage: shmdemo [data_to_write]\n");
+        exit(1);
+    }
+
+    /* 产生一个key: */
+    if ((key = ftok("shmdemo.c", 'R')) == -1) {
+        perror("ftok");
+        exit(1);
+    }
+
+    /* 连接(并可能创建)段: */
+    if ((shmid = shmget(key, SHM_SIZE, 0644 | IPC_CREAT)) == -1) {
+        perror("shmget");
+        exit(1);
+    }
+
+    /* 附加到段以获得指向该段的指针: */
+    data = shmat(shmid, (void *)0, 0);
+    if (data == (char *)(-1)) {
+        perror("shmat");
+        exit(1);
+    }
+
+    /* 根据命令行读取或修改该段: */
+    if (argc == 2) 
+    {
+        printf("writing to segment: \"%s\"\n", argv[1]);
+        strncpy(data, argv[1], SHM_SIZE);
+    } 
+    else
+        printf("segment contains: \"%s\"\n", data);
+
+    /* 从段中分离: */
+    if (shmdt(data) == -1) {
+        perror("shmdt");
+        exit(1);
+    }
+
+    return 0;
+}
+```
+
+更常见的情况是，当其他程序更改和读取共享段时，进程将附加到段上并运行一段时间。观察一个进程更新这个段，并看到这些变化出现在其他进程身上，是一件很简洁的事情。同样，为了简单起见，示例代码并没有这样做，但是可以看到数据是如何在独立进程之间共享的。
+
+此外，这里没有用于删除段的代码,最好得删除。
+
+### 10.内存映射
+
+有时，您需要读写文件，以便在进程之间共享信息。可以这样考虑:两个进程同时打开同一个文件，并对其进行读写操作，从而共享信息。问题是，有时候做所有这些`fseek()`之类的事情是很痛苦的。如果你能把文件的一部分映射到内存中，并得到一个指向它的指针，不是更容易吗?然后，可以简单地使用指针来获取(和设置)文件中的数据。
+
+这就是内存映射文件。而且它也很容易使用。几个简单的调用，加上一些简单的规则,就能做极大的事情。
+
+#### 10.1制造共享文件
+
+在将文件映射到内存之前，你需要使用open()系统调用获取文件描述符:
+
+```c
+int fd;
+
+fd = open("mapdemofile", O_RDWR);
+```
+在本例中，我们打开了文件以获得读/写访问权限。您可以以您想要的任何模式打开它，但是它必须与下面的mmap()调用在prot参数中指定的模式相匹配。
+要在内存中映射一个文件，可以使用mmap()系统调用，它的定义如下:
+
+```c
+void *mmap(void *addr, size_t len, int prot,
+           int flags, int fildes, off_t offset);
+```
+
+它的参数参照 [mmap](../docs/mmap.md)
+
+至于返回值，大多数人可能已经猜到的，mmap()在出错时返回-1，并设置errno。否则，它返回一个指向映射数据开始的指针。
+
+我将做一个简短的演示，将文件的第二个“页面”映射到内存中。首先，我将调用open()获取文件描述符，然后使用getpagesize()获取虚拟内存页的大小，并将这个值用于len和offset。通过这种方式，将从第二个页开始映射，并映射一个页的长度。(在我的Linux机器上，页面大小是4K。)
+
+```c
+#include <unistd.h>
+#include <sys/types.h>
+#include <sys/mman.h>
+
+int fd, pagesize;
+char *data;
+
+fd = open("foo", O_RDONLY);
+pagesize = getpagesize();
+data = mmap((caddr_t)0, pagesize, PROT_READ, MAP_SHARED, fd,pagesize);
+```
+
+一旦这个代码扩展运行，就可以使用data[0]访问文件映射部分的第一个字节。注意这里有很多类型转换。例如，mmap()返回caddr_t，但我们将其视为char*。事实上，caddr_t通常被定义为一个char*，所以一切都没问题。
+
+还要注意，设置了prot为PROT_READ，因此我们有只读访问。任何写入数据的尝试(例如data[0] = 'B')都将导致段错误。如果希望对数据有读写两种权限，可以通过open()函数的O_RDWR参数来获取文件的描述符，并将prot设置为PROT_READ|PROT_WRITE。
+
+#### 10.2消除内存映射
+
+当然，有一个munmap()函数可以取消内存映射文件:
+
+```c
+int munmap(caddr_t addr, size_t len);
+```
+
+这只是取消了addr(从mmap()返回)指向的区域，其长度为len(与传递给mmap()的len相同)。munmap()错误时返回-1并设置errno变量。
+
+一旦你解除了文件的映射，任何通过旧指针访问数据的尝试都会导致段错误。
+
+最后注意:当然，如果程序退出，该文件将自动取消映射。
+
+#### 10.3内存映射的并发问题
+
+如果有多个进程同时操作同一个文件中的数据，可能会遇到麻烦。可能必须锁住文件或使用信号量来控制对文件的访问，否则进程会破坏文件。(同样本文不做更多的讨论)
+
+#### 10.4简单的用例
+
+这里有一个演示程序，它将自己的源代码映射到内存，并打印指定的位偏移量处找到的字节(当然是显示在终端的)。
+
+该程序将可以指定的偏移量限制在文件长度范围内为0。文件长度是通过调用stat()获得的，这在以前可能没有见过。它返回一个充满文件信息的结构，其中一个字段是以字节为单位的大小。很容易使用该函数。
+
+下面是mmapdemo.c
+
+```c
+#include <stdio.h>
+#include <stdlib.h>
+#include <fcntl.h>
+#include <unistd.h>
+#include <sys/types.h>
+#include <sys/mman.h>
+#include <sys/stat.h>
+#include <errno.h>
+
+int main(int argc, char *argv[])
+{
+    int fd, offset;
+    char *data;
+    struct stat sbuf;
+
+    if (argc != 2) {
+        fprintf(stderr, "usage: mmapdemo offset\n");
+        exit(1);
+    }
+
+    if ((fd = open("mmapdemo.c", O_RDONLY)) == -1) {
+        perror("open");
+        exit(1);
+    }
+
+    if (stat("mmapdemo.c", &sbuf) == -1) {
+        perror("stat");
+        exit(1);
+    }
+
+    offset = atoi(argv[1]);
+    if (offset < 0 || offset > sbuf.st_size-1) {
+        fprintf(stderr, "mmapdemo: offset must be in the range 0-%d\n", \
+                                                              sbuf.st_size-1);
+        exit(1);
+    }
+    
+    data = mmap((caddr_t)0, sbuf.st_size, PROT_READ, MAP_SHARED, fd, 0)) \
+                                                           == (caddr_t)(-1)) {
+    if (data == (caddr_t)(-1)) {
+        perror("mmap");
+        exit(1);
+    }
+
+    printf("byte at offset %d is '%c'\n", offset, data[offset]);
+
+    return 0;
+}
+```
+
+编译它然后运行结果如下:
+
+```
+mmapdemo 30
+byte at offset 30 is 'e'
+```
+
+它可以使用这个系统调用编写一些非常酷的程序。
+
+#### 10.5内存映射总结
+
+内存映射非常有用，特别是在不支持共享内存的系统上。事实上，这两者在很多方面非常相似。(内存映射也被提交到磁盘，所以这甚至可能是一个优势，对吗?)有了文件锁定或信号量，内存映射文件中的数据可以很容易地在多个进程之间共享。
+
+### 11.Unix Sockets
+
+Unix域套接字!如套接字是什么，它是一个双向通信管道，可以用于在各种领域进行通信。套接字通信最常见的领域之一是Internet，但我们在这里不讨论这个。然而，我们将讨论Unix领域中的套接字;也就是说，可以在同一个Unix系统上的进程之间使用的套接字。
+
+
+#### 11.1概述
+
+Unix套接字就像双向的fifo。但是，所有的数据通信都将通过socket接口进行，而不是通过file接口。尽管Unix套接字是文件系统中的一个特殊文件(就像FIFOs一样)，但你不会使用open()和read()去操作它——将使用socket()、bind()、recv()等。
+
+例如，当描述您想要使用哪个Unix套接字时(即套接字所在的特殊文件的路径)，您可以使用sockaddr_un结构，它有以下字段:
+```c
+struct sockaddr_un {
+    unsigned short sun_family;  /* AF_UNIX */
+    char sun_path[108];
+}
+```
+
+这是将传递给bind()函数的结构，该函数将套接字描述符(文件描述符)与某个文件(其名称在sun_path字段中)关联起来。
+
+#### 11.2怎么写一个服务器?
+
+将概述服务器程序为完成任务通常必须经历的步骤，但不涉及太多细节。我将尝试实现一个“echo服务器”，它只是echo回它在套接字上得到的一切数据。
+
+1. 调用socket():使用适当的参数调用socket()将创建Unix套接字:
