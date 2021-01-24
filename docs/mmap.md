@@ -42,5 +42,5 @@ void *mmap(void *addr, size_t length, int prot, int flags,
 
 调用成功,返回映射区的首地址。
 
-调用失败,返回errno MAP_FAILED
+调用失败,返回-1并设置errno为MAP_FAILED
 
