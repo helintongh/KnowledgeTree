@@ -6,6 +6,8 @@
 
 通过Cache来缩小知识范围，但是即使是被压缩过的知识依旧很多，我们怎么能够在脑海中快速检索它们呢？结合查找算法，Hash无疑是最快的，但又有多少人能够给一个"key"立马对应上"value"呢？所以，最适合人类认知的方式是通过索引 + 树状结构，在整理这份笔记时，我划分了很多级索引用来将各部分知识点划分到相应的模块中，不仅检索速度上去了还可以对整个知识体系有宏观认识。
 
+四篇文章掌握Linux编程基础图谱: [Linux进程间通信](ipc_guide/ipcguide.md)
+
 [Linux编程使用基础](linux_basic/README.md) 
 
 
@@ -38,7 +40,9 @@
 	|  [exec~](docs/exec.md) | [system](docs/system.md) |   <kbd>fork进程执行命令</kbd>>
 	| [wait](docs/wait.md) | [waitpid](docs/waitpid.md) |	<kbd>进程回收</kbd>>
 
-* [IPC进程间通信](进程通信.md)
+	[进程知识补充-守护进程,进程组,会话等知识](docs/进程知识补充.md)
+
+* [IPC进程间通信](docs/进程通信.md)
 	* 1. 管道
 
 	| [pipe](docs/pipe.md) |  [mkfifo](docs/mkfifo.md) | [mknod](docs/mknod.md) |
@@ -69,6 +73,7 @@
 	|[msgsnd](docs/msgsnd-msgrcv.md)|         |[shmdt](docs/shmat-shmdt.md)|        |
 
 	* 3.2 IPC对象 <kbd>POSIX</kbd> POSIX的IPC对象多用在线程同步方面,将放在多线程中概述。
+* [Linux多线程编程](docs/)
 
 * [Linux Socket网络编程](docs/网络编程.md):
 
