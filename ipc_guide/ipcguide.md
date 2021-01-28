@@ -1764,3 +1764,277 @@ struct sockaddr_un {
 将概述服务器程序为完成任务通常必须经历的步骤，但不涉及太多细节。我将尝试实现一个“echo服务器”，它只是echo回它在套接字上得到的一切数据。
 
 1. 调用socket():使用适当的参数调用socket()将创建Unix套接字:
+
+```c
+unsigned int s, s2;
+struct sockaddr_un local, remote;
+int len;
+
+s = socket(AF_UNIX, SOCK_STREAM, 0);
+```
+
+第二个参数SOCK_STREAM告诉socket()创建一个流套接字(顺序的,可靠,双向,面向连接的比特流)。Unix域中支持数据报套接字(提供定长的,不可靠,无连接的通信)，但这里只讨论流套接字()。唯一改变的是，现在使用的是sockaddr_un结构体，而不是sockaddr_in结构体。
+
+2. 调用bind():把从socket()的调用中获得的一个套接字描述符->绑定到Unix域中的一个地址。(如前所述，该地址是磁盘上的一个特殊文件。)
+
+```c
+local.sun_family = AF_UNIX;  /* local的声明在调用socket()之前,注意第一段代码 */
+strcpy(local.sun_path, "/home/he/mysocket");
+unlink(local.sun_path);
+len = strlen(local.sun_path) + sizeof(local.sun_family);
+bind(s, (struct sockaddr *)&local, len);
+```
+
+这将套接字描述符“s”与Unix套接字地址“/home/he/mysocket”相关联。注意，在bind()之前调用unlink()来移除已经存在的套接字。如果文件已经在那里，你会得到一个`EINVAL`错误。
+
+3. 调用listen():这指示套接字侦听来自客户端程序的传入连接:
+
+```c
+listen(s, 5);
+```
+第二个参数5是在调用accept()之前可以传入连接的数量。如果有等于5的连接等待被接受，其他客户端将生成错误`ECONNREFUSED`。
+
+4. 调用accept():这将接受来自客户端的连接。这个函数返回另一个套接字描述符s2!旧的描述符仍然在监听新的连接，但是这个新的连接已经连接到客户端:
+
+```c
+len = sizeof(struct sockaddr_un);
+s2 = accept(s, &remote, &len);
+```
+
+当accept()返回时，远程变量s2将被远程(remote)端`struct sockaddr_un`填充，len将被设置为其长度。描述符s2连接到客户端，并准备好接收send()和recv()。
+
+5. 处理连接并返回accept():通常你会想要在这里与客户端通信(我们只是回送它发送给我们的所有东西)，关闭连接，然后accept()一个新的连接。
+
+```c
+while (len = recv(s2, &buf, 100, 0), len > 0)
+    send(s2, &buf, len, 0);
+
+/* 这里将返回到accept() */
+```
+
+6. 关闭连接:可以通过调用Close()或shutdown()来关闭连接。
+
+综上所述，以下是echo服务器的一些源代码，echos.c。它所做的就是等待Unix套接字(在本例中名为“echo_socket”)上的连接。
+
+```c
+#include <stdio.h>
+#include <stdlib.h>
+#include <errno.h>
+#include <string.h>
+#include <sys/types.h>
+#include <sys/socket.h>
+#include <sys/un.h>
+
+#define SOCK_PATH "echo_socket" // unix套接字地址,其实是一个特殊的文件
+
+int main(void)
+{
+    int s, s2, t, len;
+    struct sockaddr_un local, remote;
+    char str[100];
+
+    if ((s = socket(AF_UNIX, SOCK_STREAM, 0)) == -1)  // 创建unix套接字
+    {
+        perror("socket");
+        exit(1);
+    }
+
+    local.sun_family = AF_UNIX;
+    strcpy(local.sun_path, SOCK_PATH);
+    unlink(local.sun_path);         // 如果该地址已经存在了那么移除,后序bind会重新创建一个socket套接字
+    len = strlen(local.sun_path) + sizeof(local.sun_family);
+    if (bind(s, (struct sockaddr *)&local, len) == -1)  // 把从socket获得到套接字绑定到一个地址
+    {
+        perror("bind");
+        exit(1);
+    }
+
+    if (listen(s, 5) == -1) 
+    {
+        perror("listen");
+        exit(1);
+    }
+
+    for(;;) 
+    {
+        int done, n;
+        printf("Waiting for a connection...\n");
+        t = sizeof(remote);
+        if ((s2 = accept(s, (struct sockaddr *)&remote, &t)) == -1)  // 接收客户端连接,s2将被对端的`struct sockaddr_un`填充
+        {
+            perror("accept");
+            exit(1);
+        }
+
+        printf("Connected.\n");
+
+        done = 0;
+        do 
+        {
+            n = recv(s2, str, 100, 0);
+            if (n <= 0) 
+            {
+                if (n < 0) perror("recv");
+                done = 1;
+            }
+            if (!done) 
+            {
+                if (send(s2, str, n, 0) < 0) 
+                {
+                    perror("send");
+                    done = 1;
+                }
+            }
+        } while (!done);
+
+        close(s2);
+    }
+
+    return 0;
+}
+```
+
+上述所有步骤都包含在这个程序中:调用socket()，调用bind()，调用listen()，调用accept()，并执行一些网络数据发送和接收的操作`send()`和`recv()`。
+
+#### 11.3客户端实现
+
+需要有一个程序来与上述服务器通信，对客户端的实现来说，要比服务器容易得多，因为不需要做任和listen()或accept()操作。以下是步骤:
+
+1. 调用socket()来获得一个Unix域套接字来进行通信。
+
+2. 使用远程地址(服务器正在侦听的地址)设置`struct sockaddr_un`，并将其作为参数调用`connect()`
+
+3. 假设没有错误，说明已经连接到服务端了!尽情使用`send()`和`recv()`吧!
+
+以下是完整代码 echoc.c
+
+```c
+#include <stdio.h>
+#include <stdlib.h>
+#include <errno.h>
+#include <string.h>
+#include <sys/types.h>
+#include <sys/socket.h>
+#include <sys/un.h>
+#include <unistd.h>
+
+#define SOCK_PATH "echo_socket"
+
+int main(void)
+{
+    int s, t, len;
+    struct sockaddr_un remote; // 服务端的地址
+    char str[100];
+
+    if ((s = socket(AF_UNIX, SOCK_STREAM, 0)) == -1) 
+    {
+        perror("socket");
+        exit(1);
+    }
+
+    printf("Trying to connect...\n");
+
+    remote.sun_family = AF_UNIX;
+    strcpy(remote.sun_path, SOCK_PATH);
+    len = strlen(remote.sun_path) + sizeof(remote.sun_family);
+    if (connect(s, (struct sockaddr *)&remote, len) == -1)  // 连接到remote socket,s通过connect调用获取remote socket
+    {
+        perror("connect");
+        exit(1);
+    }
+
+    printf("Connected.\n");
+
+    while(printf("> "), fgets(str, 100, stdin), !feof(stdin))  // 先写入然后循环读取服务端发送来的字节
+    {
+        if (send(s, str, strlen(str), 0) == -1)  // 发送str到remote
+        {
+            perror("send");
+            exit(1);
+        }
+
+        if ((t=recv(s, str, 100, 0)) > 0)  // 接收remote发送来的字符串
+        {
+            str[t] = '\0';
+            printf("echo> %s", str);
+        } 
+        else 
+        {
+            if (t < 0) perror("recv");
+            else printf("Server closed connection\n");
+            exit(1);
+        }
+    }
+
+    close(s);
+
+    return 0;
+}
+```
+
+在客户端代码中，要注意到只有几个系统调用用于设置:socket()和connect()。因为客户端不会接受任何传入的连接，所以它不需要listen()。当然，客户端仍然使用send()和recv()来传输数据。差不多就是这样。
+
+#### 11.4socketpair()快速全双工管道
+
+如果想使用`pipe()`，但又想使用单个管道从双方发送和接收数据，该怎么办?因为管道是单向的(SYSV中有例外)。不过，有一种解决方案:使用Unix域套接字，因为它们可以处理双向数据。
+
+不过，这太麻烦了!使用`listen()`和`connect()`等设置所有代码，只是为了双向传递数据!但你猜怎么着!你不必这么做!
+
+没错，有一个称为`socketpair()`的系统调用，它很好地返回一对已经连接的套接字!不需要做额外的工作;可以立即使用这些套接字描述符进行进程间通信。
+
+例如，让我们设置两个进程。第一个将一个字符发送给第二个，第二个将字符更改为大写并返回它。下面是一些简单的代码，称为spair.c(为了代码更简单，没有错误检查):
+
+```c
+#include <stdio.h>
+#include <stdlib.h>
+#include <ctype.h>
+#include <errno.h>
+#include <unistd.h>
+#include <sys/types.h>
+#include <sys/socket.h>
+#include <sys/wait.h>
+
+int main(void)
+{
+	int sv[2]; /* 用来保存一对已连接socket的数组 */
+	char buf; /* 用于进程间数据交互 */
+
+	if (socketpair(AF_UNIX, SOCK_STREAM, 0, sv) == -1)  // 申请一对已连接套接字保存在sv中
+    {
+		perror("socketpair");
+		exit(1);
+	}
+
+	if (!fork()) 
+    {  /* 子进程 */
+		read(sv[1], &buf, 1);
+		printf("child: read '%c'\n", buf);
+		buf = toupper(buf);  /* 使其大写 */
+		write(sv[1], &buf, 1);
+		printf("child: sent '%c'\n", buf);
+
+	} 
+    else 
+    { /* 父进程 */
+		write(sv[0], "b", 1);
+		printf("parent: sent 'b'\n");
+		read(sv[0], &buf, 1);
+		printf("parent: read '%c'\n", buf);
+		wait(NULL); /* 等待子进程结束回收资源 */
+	}
+
+	return 0;
+}
+```
+
+当然，这是一种昂贵的方式来改变一个字符的大小写，但事实上，可以通过此方法让父子进程交流，这才是真正重要的。
+
+要注意的一点是，`socketpair()`同时接受Unix域套接字(AF_UNIX)和流式套接字(SOCK_STREAM)。这些值可以是任何合法的值。
+
+最后，你可能会好奇为什么使用`write()`和`read()`而不是`send()`和`recv()`。某种程度来讲,send和recv是write和read的一个扩展,它们多了第四个参数来控制读写操作(这里简单起见可以少写一点)。
+
+### 12.参考资料
+
+Unix Network Programming, volumes 1-2  by W. Richard Stevens.
+Advanced Programming in the UNIX Environment by W. Richard Stevens. 
+The Linux Programming Interface by Michael Kerrisk
