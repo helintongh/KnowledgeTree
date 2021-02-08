@@ -1,14 +1,10 @@
-# Linux开发核心知识
+## Linux开发知识图谱
 
 知识是学不完的,但是Linux编程的核心知识体系是可以建立起来的,为何不建一个自己的Cache来强化自己的知识图谱呢?
 
-# 快速索引
-
-通过Cache来缩小知识范围，但是即使是被压缩过的知识依旧很多，我们怎么能够在脑海中快速检索它们呢？结合查找算法，Hash无疑是最快的，但又有多少人能够给一个"key"立马对应上"value"呢？所以，最适合人类认知的方式是通过索引 + 树状结构，在整理这份笔记时，我划分了很多级索引用来将各部分知识点划分到相应的模块中，不仅检索速度上去了还可以对整个知识体系有宏观认识。
+[Linux编程使用基础](linux_basic/README.md) 
 
 四篇文章掌握Linux编程基础图谱: [Linux进程间通信](ipc_guide/ipcguide.md)
-
-[Linux编程使用基础](linux_basic/README.md) 
 
 
 下面是我总结的api的路径:
@@ -73,7 +69,17 @@
 	|[msgsnd](docs/msgsnd-msgrcv.md)|         |[shmdt](docs/shmat-shmdt.md)|        |
 
 	* 3.2 IPC对象 <kbd>POSIX</kbd> POSIX的IPC对象多用在线程同步方面,将放在多线程中概述。
-* [Linux多线程编程](docs/)
+* [Linux多线程编程](docs/线程.md)
+
+|线程基础函数|描述|
+|---|----|
+|[pthread_create](pthread_create.md)|创建线程|
+|[pthread_exit](pthread_exit.md)|单个线程退出|
+|[pthread_join](pthead_join.md)|阻塞等待线程退出并获取线程退出状态|
+|[pthread_detach](pthead_detach.md)|线程分离|
+|[pthread_attr_init](pthead_attr_init.md)|线程属性变量初始化(常用来设置线程的分离属性)| 不常用
+|[pthread_cancle](pthead_cancle.md)|取消线程|
+
 
 * [Linux Socket网络编程](docs/网络编程.md):
 
