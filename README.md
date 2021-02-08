@@ -73,12 +73,17 @@
 
 |线程基础函数|描述|
 |---|----|
-|[pthread_create](pthread_create.md)|创建线程|
-|[pthread_exit](pthread_exit.md)|单个线程退出|
-|[pthread_join](pthead_join.md)|阻塞等待线程退出并获取线程退出状态|
-|[pthread_detach](pthead_detach.md)|线程分离|
-|[pthread_attr_init](pthead_attr_init.md)|线程属性变量初始化(常用来设置线程的分离属性)| 不常用
-|[pthread_cancle](pthead_cancle.md)|取消线程|
+|[pthread_create](docs/pthread_create.md)|创建线程|
+|[pthread_exit](docs/pthread_exit.md)|单个线程退出|
+|[pthread_join](docs/pthead_join.md)|阻塞等待线程退出并获取线程退出状态|
+|[pthread_detach](docs/pthead_detach.md)|线程分离|
+|[pthread_attr_init](docs/pthead_attr_init.md)|线程属性变量初始化(常用来设置线程的分离属性)| 不常用
+|[pthread_cancle](docs/pthead_cancle.md)|取消线程|
+
+线程同步和互斥相关:
+
+|互斥锁基本函数|描述|
+|---|----|
 
 
 * [Linux Socket网络编程](docs/网络编程.md):
