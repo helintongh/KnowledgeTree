@@ -35,6 +35,7 @@ struct ipc_perm {
 |[信号量](信号量.md)|[semget](semget.md)|[semctl](semctl.md)|[semop](semop.md)
 |[共享内存](共享内存.md)|[shmget](shmget.md)|[shmctl](shmctl.md)|[shmat/shmdt](shmat-shmdt.md)
 
+
 ### 操作
 三个函数中都会使用一个**操作**参数。有四个操作是公共操作，定义在ipc.h中。  
 下面**以消息队列举例子**讲解这四个公共操作:
