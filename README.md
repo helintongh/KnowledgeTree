@@ -71,14 +71,14 @@
 	* 3.2 IPC对象 <kbd>POSIX</kbd> POSIX的IPC对象多用在线程同步方面,将放在多线程中概述。
 * [Linux多线程编程](docs/线程.md)
 
-|线程基础函数|描述|
+|线程基础函数|线程互斥和同步|
 |---|----|
-|[pthread_create](docs/pthread_create.md)|创建线程|
-|[pthread_exit](docs/pthread_exit.md)|单个线程退出|
-|[pthread_join](docs/pthead_join.md)|阻塞等待线程退出并获取线程退出状态|
-|[pthread_detach](docs/pthead_detach.md)|线程分离|
-|[pthread_attr_init](docs/pthead_attr_init.md)|线程属性变量初始化(常用来设置线程的分离属性)| 不常用
-|[pthread_cancle](docs/pthead_cancle.md)|取消线程|
+|[pthread_create](docs/pthread_create.md)|[互斥锁](docs/互斥锁.md)|
+|[pthread_exit](docs/pthread_exit.md)|[读写锁](docs/读写锁.md)|
+|[pthread_join](docs/pthead_join.md)|[条件变量](docs/条件变量.md)|
+|[pthread_detach](docs/pthead_detach.md)|[信号量](docs/信号量.md)|
+|[pthread_attr_init](docs/pthead_attr_init.md)|| 
+|[pthread_cancle](docs/pthead_cancle.md)||
 
 线程同步和互斥相关:
 
