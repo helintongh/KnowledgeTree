@@ -76,14 +76,10 @@
 |[pthread_create](docs/pthread_create.md)|[互斥锁](docs/互斥锁.md)|
 |[pthread_exit](docs/pthread_exit.md)|[读写锁](docs/读写锁.md)|
 |[pthread_join](docs/pthead_join.md)|[条件变量](docs/条件变量.md)|
-|[pthread_detach](docs/pthead_detach.md)|[信号量](docs/信号量.md)|
+|[pthread_detach](docs/pthead_detach.md)|[线程信号量](docs/semaphore.md)|
 |[pthread_attr_init](docs/pthead_attr_init.md)|| 
 |[pthread_cancle](docs/pthead_cancle.md)||
 
-线程同步和互斥相关:
-
-|互斥锁基本函数|描述|
-|---|----|
 
 
 * [Linux Socket网络编程](docs/网络编程.md):
