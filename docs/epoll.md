@@ -84,3 +84,21 @@ int epoll_wait(int epfd, struct epoll_event *evlist, int maxevents, int timeout)
 		* -1 永久阻塞,直到感兴趣列表中的文件描述符有事件产生。
 		* 0 立即返回。执行一次非阻塞的检测,看兴趣列表中的文件描述符上产生了哪个事件。
 		* >0 调用将阻塞至多timeout毫秒,直到文件描述符上有事件发生。
+* 返回:
+	* 调用成功后,数组evlist中的元素个数。如果在timeout超时事件间隔内没有任何文件描述符处于就绪态,返回0。出错时返回-1,并设置errno。
+
+## epoll事件
+
+当调用epoll_ctl时可以在ev.events中指定的位掩码以及epoll_wait返回的evlist[].events中的值在下标
+
+|位掩码|作为epoll_ctl()的输入|由epoll_wait()返回|描述
+|------------|-------------|------------------|--------
+|EPOLLIN     | - [x]       |   - [x]          |可读取非高优先级的数据
+|EPOLLPRI    |  - [x]      |  - [x]           |可读取高优先级数据
+|EPOLLRDHUP  | - [x]       |  - [x]           |套接字对端关闭
+|EPOLLOUT    |  - [x]      |   - [x]          |普通数据可写
+|EPOLLET     |  - [x]      |                  |采用边缘触发事件通知
+|EPOLLONESHOT| - [x]       |                  |在完成事件通知之后禁用检查
+|EPOLLERR    |             |   - [x]          |有错误发生
+|EPOLLHUP    |             |  - [x]           |出现挂断
+
