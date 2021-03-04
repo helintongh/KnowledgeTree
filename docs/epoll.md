@@ -93,12 +93,48 @@ int epoll_wait(int epfd, struct epoll_event *evlist, int maxevents, int timeout)
 
 |位掩码|作为epoll_ctl()的输入|由epoll_wait()返回|描述
 |------------|-------------|------------------|--------
-|EPOLLIN     | - [x]       |   - [x]          |可读取非高优先级的数据
-|EPOLLPRI    |  - [x]      |  - [x]           |可读取高优先级数据
-|EPOLLRDHUP  | - [x]       |  - [x]           |套接字对端关闭
-|EPOLLOUT    |  - [x]      |   - [x]          |普通数据可写
-|EPOLLET     |  - [x]      |                  |采用边缘触发事件通知
-|EPOLLONESHOT| - [x]       |                  |在完成事件通知之后禁用检查
-|EPOLLERR    |             |   - [x]          |有错误发生
-|EPOLLHUP    |             |  - [x]           |出现挂断
+|EPOLLIN     | :heavy_check_mark:    |   :heavy_check_mark:    |可读取非高优先级的数据
+|EPOLLPRI    |  :heavy_check_mark:   |  :heavy_check_mark:     |可读取高优先级数据
+|EPOLLRDHUP  | :heavy_check_mark:    |  :heavy_check_mark:     |套接字对端关闭
+|EPOLLOUT    |  :heavy_check_mark:   |   :heavy_check_mark:    |普通数据可写
+|EPOLLET     |  :heavy_check_mark:   |                         |采用边缘触发事件通知
+|EPOLLONESHOT| :heavy_check_mark:    |                         |在完成事件通知之后禁用检查
+|EPOLLERR    |                       |   :heavy_check_mark:    |有错误发生
+|EPOLLHUP    |                       |  :heavy_check_mark:     |出现挂断
 
+epoll快的原因: 
+
+1. 只有IO操作执行使得fd变为就绪态时,内核才在epoll描述符就绪列表中添加一个元素。(一开始不检查所有)
+2. epoll通过epoll_ctl在内核空间建立数据结构,稍后的epoll_wait调用不需要传递任何与文件描述符有关的信息给内核。
+
+## 边缘触发
+
+```c
+struct epoll_event ev;
+ev.data.fd = fd;
+
+ev.events = EPOLLIN | EPOLLET;
+if(epoll_ctl(epfd, EPOLL_CTL_ADD, fd, ev) == -1)
+	// 差错处理
+```
+
+水平和边缘触发区别:
+假设我们使用epoll来监视一个套接字上的输入(EPOLLIN)
+
+1. 套接字上有输入到来。
+2. 调用一次epoll_wait()。无论采取水平还是边缘触发通知,该调用都会告诉我们套接字已经处于就绪态。
+3. 再次调用epoll_wait().
+如果是水平触发,那么第二个epoll_wait()调用将告诉我们套接字处于就绪态。而如果采用边缘触发通知,那么第二次epoll_wait()将阻塞,因为自从上一次调用epoll_wait()以来并没有新的输入到来。
+
+边缘触发通常和非阻塞的文件描述符使用。因而,采用epoll边缘触发通知机制的程序基本框架如下:
+1. 让所有待监视的文件描述符都成为非阻塞的。
+2. 通过epoll_ctl()构建epoll的兴趣列表(指定边缘触发)
+3. 通过如下循环处理IO事件:
+	* 通过epoll_wait()取得处于就绪态的描述符列表
+	* 针对每一个处于就绪态的文件描述符,不断进行IO处理直到相关的系统调用(例如read(),write(),recv(),send()或accept())返回EAGAIN或EWOULDBLOCK错误。
+
+epoll带来了饥饿问题解决:
+
+1. 设置timeout为0或大于0
+
+2. 只在已经注册为就绪态的fd上进行一定限度的IO操作。
