@@ -2,6 +2,8 @@
 
 知识是学不完的,但是Linux编程的核心知识体系是可以建立起来的,为何不建一个自己的Cache来强化自己的知识图谱呢?
 
+[Linux C精华总结](linux_c/README.md) 
+
 [Linux编程使用基础](linux_basic/README.md) 
 
 四篇文章掌握Linux编程基础图谱: [Linux进程间通信](ipc_guide/ipcguide.md)
