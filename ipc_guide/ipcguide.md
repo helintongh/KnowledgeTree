@@ -1692,12 +1692,12 @@ int main(int argc, char *argv[])
     char *data;
     struct stat sbuf;
 
-    if (argc != 2) {
+    if (argc != 3) {
         fprintf(stderr, "usage: mmapdemo offset\n");
         exit(1);
     }
 
-    if ((fd = open("mmapdemo.c", O_RDONLY)) == -1) {
+    if ((fd = open("mmapdemo.c", O_RDWR)) == -1) {
         perror("open");
         exit(1);
     }
@@ -1714,14 +1714,16 @@ int main(int argc, char *argv[])
         exit(1);
     }
     
-    data = mmap((caddr_t)0, sbuf.st_size, PROT_READ, MAP_SHARED, fd, 0)) \
-				== (caddr_t)(-1)) {
+    
+    if ((data = mmap((caddr_t)0, sbuf.st_size, PROT_WRITE | PROT_READ, MAP_SHARED, fd, 0)) \
+                                                           == (caddr_t)(-1)) {
         perror("mmap");
         exit(1);
     }
 
     printf("byte at offset %d is '%c'\n", offset, data[offset]);
-
+	data[offset] = argv[2][0];
+	printf("byte at offset %d is '%c'\n", offset, data[offset]);
     return 0;
 }
 ```
